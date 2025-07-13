@@ -1,0 +1,71 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../node_modules/.prisma/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id             String  @id @default(uuid())
+  firstName      String  @map("first_name") @db.VarChar(100)
+  lastName       String  @map("last_name") @db.VarChar(100)
+  email          String  @unique @db.VarChar(255)
+  password       String? @db.VarChar(255)
+  avatarUrl      String? @map("avatar_url")
+  avatarPublicId String? @map("avatar_public_id")
+
+  role     UserRole  @default(USER)
+  accounts Account[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([id])
+  @@index([email])
+  @@index([role])
+  @@map("users")
+}
+
+model Account {
+  id         String @id @default(uuid())
+  provider   String
+  providerId String
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerId])
+  @@index([provider, providerId])
+  @@map("accounts")
+}
+
+model Token {
+  id        String    @id @default(uuid())
+  email     String
+  code      String
+  type      TokenType
+  expiresIn DateTime  @map("expires_in")
+  meta      Json?
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@unique([email, type])
+  @@index([email, type])
+  @@index([code, type])
+  @@map("tokens")
+}
+
+enum UserRole {
+  USER
+  ADMIN
+}
+
+enum TokenType {
+  VERIFICATION
+  TWO_FACTOR
+  PASSWORD_RESET
+  EMAIL_CHANGE
+}
