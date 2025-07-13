@@ -1,22 +1,14 @@
-import { Injectable } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
+import { Inject, Injectable } from '@nestjs/common';
 import { render } from '@react-email/components';
 import * as nodemailer from 'nodemailer';
 import { VerificationTemplate } from './templates/verification.template';
 
 @Injectable()
 export class MailService {
-	private transporter: nodemailer.Transporter;
-
-	constructor(private readonly configService: ConfigService) {
-		this.transporter = nodemailer.createTransport({
-			service: this.configService.get<string>('EMAIL_SERVICE'),
-			auth: {
-				user: this.configService.get<string>('EMAIL_USER'),
-				pass: this.configService.get<string>('EMAIL_PASS'),
-			},
-		});
-	}
+	constructor(
+		@Inject('MAIL_TRANSPORTER')
+		private readonly transporter: nodemailer.Transporter,
+	) {}
 
 	public async sendVerificationCode(email: string, code: string) {
 		const html = await render(VerificationTemplate(code));

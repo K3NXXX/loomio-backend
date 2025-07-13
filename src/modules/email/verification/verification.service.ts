@@ -1,15 +1,12 @@
-import { InjectQueue } from '@nestjs/bull';
 import {
 	BadRequestException,
 	ConflictException,
-	forwardRef,
-	Inject,
 	Injectable,
 	NotFoundException,
 } from '@nestjs/common';
 import { TokenType } from '@prisma/client';
 import { hash } from 'bcrypt';
-import { Queue } from 'bull';
+import { MailService } from 'src/common/libs/mail/mail.service';
 import { SignupDto, SignupMeta } from 'src/modules/auth/dto/auth.dto';
 import { UserService } from 'src/modules/user/user.service';
 import { PrismaService } from '../../../common/prisma.service';
@@ -18,8 +15,7 @@ import { PrismaService } from '../../../common/prisma.service';
 export class VerificationService {
 	constructor(
 		private readonly prisma: PrismaService,
-		@InjectQueue('mail') private readonly mailQueue: Queue,
-		@Inject(forwardRef(() => UserService))
+		private readonly mailService: MailService,
 		private readonly userService: UserService,
 	) {}
 
@@ -69,17 +65,7 @@ export class VerificationService {
 			},
 		});
 
-		await this.mailQueue.add(
-			'sendVerification',
-			{
-				email: dto.email,
-				code,
-			},
-			{
-				removeOnComplete: { age: 600 },
-				removeOnFail: { age: 86400 },
-			},
-		);
+		await this.mailService.sendVerificationCode(dto.email, code);
 	}
 
 	public async resendVerificationCode(email: string) {
@@ -108,10 +94,7 @@ export class VerificationService {
 			},
 		});
 
-		await this.mailQueue.add('sendVerification', {
-			email,
-			code: newCode,
-		});
+		await this.mailService.sendVerificationCode(email, newCode);
 	}
 
 	public async verifyCode(code: string) {
