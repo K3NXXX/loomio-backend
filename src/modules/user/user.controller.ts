@@ -7,7 +7,7 @@ import {
 	UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { Authorization } from 'src/common/decorators/auth.decorator';
+import { Authorization } from 'src/common/decorators/auth.decorators';
 import { CurrentUser } from 'src/common/decorators/user.decorator';
 import { UserService } from './user.service';
 

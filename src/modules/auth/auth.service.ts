@@ -83,6 +83,29 @@ export class AuthService {
 		return { user, ...tokens };
 	}
 
+	async refresh(refreshToken: string) {
+		const result = await this.jwt.verifyAsync(refreshToken);
+		if (!result) throw new UnauthorizedException('Invalid refresh token');
+
+		const user = await this.userService.findById(result.id);
+		if (!user) throw new UnauthorizedException('User not found');
+
+		const tokens = this.issueTokens(user.id);
+
+		return { user, ...tokens };
+	}
+
+	redirect(res: Response, accessToken: string, refreshToken: string) {
+		this.addRefreshToken(res, refreshToken);
+
+		const clientUrl =
+			this.configService.getOrThrow<string>('CLIENT_URL') ?? 'http://localhost:3000';
+
+		const redirectUrl = `${clientUrl}/oauth-callback?accessToken=${accessToken}`;
+
+		return res.redirect(redirectUrl);
+	}
+
 	issueTokens(userId: string) {
 		const data = { id: userId };
 
@@ -97,28 +120,16 @@ export class AuthService {
 		return { accessToken, refreshToken };
 	}
 
-	async refresh(refreshToken: string) {
-		const result = await this.jwt.verifyAsync(refreshToken);
-		if (!result) throw new UnauthorizedException('Invalid refresh token');
-
-		const user = await this.userService.findById(result.id);
-		if (!user) throw new UnauthorizedException('User not found');
-
-		const tokens = this.issueTokens(user.id);
-
-		return { user, ...tokens };
-	}
-
 	addRefreshToken(res: Response, refreshToken: string) {
+		const isProd = this.configService.getOrThrow<string>('NODE_ENV') === 'production';
+
 		const cookieOptions: CookieOptions = {
 			httpOnly: true,
 			expires: new Date(Date.now() + 15 * 24 * 60 * 60 * 1000),
-			secure: true,
-			sameSite: 'none',
+			secure: isProd,
+			sameSite: isProd ? 'none' : 'lax',
+			path: '/',
 		};
-
-		const domain = this.configService.get('SERVER_DOMAIN');
-		if (domain) cookieOptions.domain = domain;
 
 		res.cookie('refreshToken', refreshToken, cookieOptions);
 	}

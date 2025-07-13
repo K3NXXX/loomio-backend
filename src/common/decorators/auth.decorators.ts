@@ -10,3 +10,15 @@ export function Authorization(...role: UserRole[]) {
 
 	return UseGuards(AuthGuard('jwt'));
 }
+
+export function GoogleAuthorization() {
+	return UseGuards(AuthGuard('google'));
+}
+
+export function FacebookAuthorization() {
+	return UseGuards(AuthGuard('facebook'));
+}
+
+export function GitHubAuthorization() {
+	return UseGuards(AuthGuard('github'));
+}

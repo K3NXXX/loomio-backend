@@ -1,15 +1,18 @@
 import { Body, Controller, Get, Post, Req, Res, UnauthorizedException } from '@nestjs/common';
 import { Request, Response } from 'express';
-import { Authorization } from 'src/common/decorators/auth.decorator';
+
 import {
+	Authorization,
 	FacebookAuthorization,
 	GitHubAuthorization,
 	GoogleAuthorization,
-} from 'src/common/decorators/oauth.decorators';
+} from 'src/common/decorators/auth.decorators';
+import { RateLimit } from 'src/common/decorators/rate-limit.decorator';
+import { CurrentUser } from 'src/common/decorators/user.decorator';
 import { OAuthUser } from 'src/common/types/auth.type';
 import { VerificationService } from '../email/verification/verification.service';
 import { AuthService } from './auth.service';
-import { LoginDto, SignupDto } from './dto/auth.dto';
+import { LoginDto, ResendCodeDto, SignupDto, VerifyCodeDto } from './dto/auth.dto';
 
 @Controller('auth')
 export class AuthController {
@@ -21,15 +24,12 @@ export class AuthController {
 	@Post('register')
 	async register(@Body() dto: SignupDto) {
 		await this.authService.register(dto);
-		return {
-			message: 'Verification code sent to your email',
-		};
+		return { message: 'Verification code sent to your email' };
 	}
 
 	@Post('register/verify')
-	async verifyCode(@Body('code') code: string, @Res({ passthrough: true }) res: Response) {
-		const user = await this.verificationService.verifyCode(code);
-
+	async verifyCode(@Body() dto: VerifyCodeDto, @Res({ passthrough: true }) res: Response) {
+		const user = await this.verificationService.verifyCode(dto.code);
 		const tokens = this.authService.issueTokens(user.id);
 		this.authService.addRefreshToken(res, tokens.refreshToken);
 
@@ -41,67 +41,54 @@ export class AuthController {
 	}
 
 	@Post('register/resend')
-	async resendCode(@Body('email') email: string) {
-		await this.verificationService.resendVerificationCode(email);
-		return {
-			message: 'New verification code sent',
-		};
+	async resendCode(@Body() dto: ResendCodeDto) {
+		await this.verificationService.resendVerificationCode(dto.email);
+		return { message: 'New verification code sent' };
 	}
 
+	@RateLimit()
 	@Post('login')
 	async login(@Body() dto: LoginDto, @Res({ passthrough: true }) res: Response) {
 		const { refreshToken, ...response } = await this.authService.login(dto);
-
 		this.authService.addRefreshToken(res, refreshToken);
-
 		return response;
 	}
 
+	@RateLimit()
 	@GoogleAuthorization()
 	@Get('google')
-	async googleAuth() {}
+	googleAuth() {}
 
+	@Authorization()
 	@GoogleAuthorization()
 	@Get('google/callback')
-	async googleAuthCallback(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
-		const result = await this.authService.loginWithOAuth(req.user as OAuthUser);
-
-		this.authService.addRefreshToken(res, result.refreshToken);
-
-		return res.redirect(
-			`${process.env.CLIENT_URL}/oauth-callback?accessToken=${result.accessToken}`,
-		);
+	async googleAuthCallback(@CurrentUser() user: OAuthUser, @Res() res: Response) {
+		const result = await this.authService.loginWithOAuth(user);
+		this.authService.redirect(res, result.accessToken, result.refreshToken);
 	}
 
-	@Get('facebook')
+	@RateLimit()
 	@FacebookAuthorization()
+	@Get('facebook')
 	facebookAuth() {}
 
-	@Get('facebook/callback')
 	@FacebookAuthorization()
-	async facebookCallback(@Req() req: Request, @Res() res: Response) {
-		const result = await this.authService.loginWithOAuth(req.user as OAuthUser);
-
-		this.authService.addRefreshToken(res, result.refreshToken);
-
-		return res.redirect(
-			`${process.env.CLIENT_URL}/oauth-callback?accessToken=${result.accessToken}`,
-		);
+	@Get('facebook/callback')
+	async facebookCallback(@CurrentUser() user: OAuthUser, @Res() res: Response) {
+		const result = await this.authService.loginWithOAuth(user);
+		this.authService.redirect(res, result.accessToken, result.refreshToken);
 	}
 
+	@RateLimit()
 	@GitHubAuthorization()
 	@Get('github')
 	githubAuth() {}
 
 	@GitHubAuthorization()
 	@Get('github/callback')
-	async githubCallback(@Req() req: Request, @Res() res: Response) {
-		const result = await this.authService.loginWithOAuth(req.user as OAuthUser);
-		this.authService.addRefreshToken(res, result.refreshToken);
-
-		return res.redirect(
-			`${process.env.CLIENT_URL}/oauth-callback?accessToken=${result.accessToken}`,
-		);
+	async githubCallback(@CurrentUser() user: OAuthUser, @Res() res: Response) {
+		const result = await this.authService.loginWithOAuth(user);
+		this.authService.redirect(res, result.accessToken, result.refreshToken);
 	}
 
 	@Post('logout')
@@ -123,7 +110,6 @@ export class AuthController {
 		} = await this.authService.refresh(refreshToken);
 
 		this.authService.addRefreshToken(res, newRefreshToken);
-
 		return { accessToken, user };
 	}
 }

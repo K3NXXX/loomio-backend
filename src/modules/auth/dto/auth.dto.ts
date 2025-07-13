@@ -47,3 +47,15 @@ export type SignupMeta = {
 	email: string;
 	password: string;
 };
+
+export class VerifyCodeDto {
+	@IsString()
+	@IsNotEmpty()
+	code: string;
+}
+
+export class ResendCodeDto {
+	@IsString()
+	@IsNotEmpty()
+	email: string;
+}
