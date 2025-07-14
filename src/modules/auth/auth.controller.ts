@@ -1,24 +1,22 @@
 import { Body, Controller, Get, Post, Req, Res, UnauthorizedException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { Request, Response } from 'express';
-
 import {
 	Authorization,
-	FacebookAuthorization,
 	GitHubAuthorization,
 	GoogleAuthorization,
-} from 'src/common/decorators/auth.decorators';
+} from 'src/common/decorators/auth.decorator';
 import { RateLimit } from 'src/common/decorators/rate-limit.decorator';
-import { CurrentUser } from 'src/common/decorators/user.decorator';
-import { OAuthUser } from 'src/common/types/auth.type';
 import { VerificationService } from '../email/verification/verification.service';
 import { AuthService } from './auth.service';
-import { LoginDto, ResendCodeDto, SignupDto, VerifyCodeDto } from './dto/auth.dto';
+import { LoginDto, SignupDto } from './dto/auth.dto';
 
 @Controller('auth')
 export class AuthController {
 	constructor(
 		private readonly authService: AuthService,
 		private readonly verificationService: VerificationService,
+		private readonly configService: ConfigService,
 	) {}
 
 	@Post('register')
@@ -28,30 +26,53 @@ export class AuthController {
 	}
 
 	@Post('register/verify')
-	async verifyCode(@Body() dto: VerifyCodeDto, @Res({ passthrough: true }) res: Response) {
-		const user = await this.verificationService.verifyCode(dto.code);
-		const tokens = this.authService.issueTokens(user.id);
-		this.authService.addRefreshToken(res, tokens.refreshToken);
+	async verifyCode(
+		@Body('code') code: string,
+		@Req() req: Request,
+		@Res({ passthrough: true }) res: Response,
+	) {
+		const userAgent = req.headers['user-agent'] || '';
+		const user = await this.verificationService.verifyCode(code);
+
+		const { accessToken, refreshToken } = await this.authService.issueTokens(
+			user,
+			req.ip as string,
+			userAgent,
+		);
+
+		const { password, ...rest } = user;
+
+		this.authService.setAuthCookies(res, accessToken, refreshToken);
 
 		return {
 			message: 'Account verified and registered successfully!',
-			user,
-			accessToken: tokens.accessToken,
+			user: rest,
 		};
 	}
 
 	@Post('register/resend')
-	async resendCode(@Body() dto: ResendCodeDto) {
-		await this.verificationService.resendVerificationCode(dto.email);
+	async resendCode(@Body('email') email: string) {
+		await this.verificationService.resendVerificationCode(email);
 		return { message: 'New verification code sent' };
 	}
 
 	@RateLimit()
 	@Post('login')
-	async login(@Body() dto: LoginDto, @Res({ passthrough: true }) res: Response) {
-		const { refreshToken, ...response } = await this.authService.login(dto);
-		this.authService.addRefreshToken(res, refreshToken);
-		return response;
+	async login(
+		@Body() dto: LoginDto,
+		@Req() req: Request,
+		@Res({ passthrough: true }) res: Response,
+	) {
+		const userAgent = req.headers['user-agent'] || '';
+		const { accessToken, refreshToken, user } = await this.authService.login(
+			dto,
+			req.ip as string,
+			userAgent,
+		);
+
+		this.authService.setAuthCookies(res, accessToken, refreshToken);
+
+		return { user };
 	}
 
 	@RateLimit()
@@ -62,21 +83,8 @@ export class AuthController {
 	@Authorization()
 	@GoogleAuthorization()
 	@Get('google/callback')
-	async googleAuthCallback(@CurrentUser() user: OAuthUser, @Res() res: Response) {
-		const result = await this.authService.loginWithOAuth(user);
-		this.authService.redirect(res, result.accessToken, result.refreshToken);
-	}
-
-	@RateLimit()
-	@FacebookAuthorization()
-	@Get('facebook')
-	facebookAuth() {}
-
-	@FacebookAuthorization()
-	@Get('facebook/callback')
-	async facebookCallback(@CurrentUser() user: OAuthUser, @Res() res: Response) {
-		const result = await this.authService.loginWithOAuth(user);
-		this.authService.redirect(res, result.accessToken, result.refreshToken);
+	async googleAuthCallback(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
+		return this.authService.handleLoginWithOAuth(req, res);
 	}
 
 	@RateLimit()
@@ -86,15 +94,19 @@ export class AuthController {
 
 	@GitHubAuthorization()
 	@Get('github/callback')
-	async githubCallback(@CurrentUser() user: OAuthUser, @Res() res: Response) {
-		const result = await this.authService.loginWithOAuth(user);
-		this.authService.redirect(res, result.accessToken, result.refreshToken);
+	async githubCallback(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
+		return this.authService.handleLoginWithOAuth(req, res);
 	}
 
+	@Authorization()
 	@Post('logout')
-	async logout(@Res({ passthrough: true }) res: Response) {
-		this.authService.removeRefreshToken(res);
-		return true;
+	async logout(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
+		const refreshToken = req.cookies['refreshToken'];
+		if (!refreshToken) throw new UnauthorizedException('Refresh token missing');
+
+		await this.authService.logout(refreshToken, res);
+
+		return { message: 'Logged out successfully' };
 	}
 
 	@Authorization()
@@ -103,13 +115,15 @@ export class AuthController {
 		const refreshToken = req.cookies['refreshToken'];
 		if (!refreshToken) throw new UnauthorizedException('Refresh token missing');
 
+		const userAgent = req.headers['user-agent'] || '';
 		const {
 			user,
 			accessToken,
 			refreshToken: newRefreshToken,
-		} = await this.authService.refresh(refreshToken);
+		} = await this.authService.refresh(refreshToken, req.ip as string, userAgent);
 
-		this.authService.addRefreshToken(res, newRefreshToken);
-		return { accessToken, user };
+		this.authService.setAuthCookies(res, accessToken, newRefreshToken);
+
+		return { user };
 	}
 }

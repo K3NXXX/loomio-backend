@@ -7,12 +7,15 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
+import { User } from '@prisma/client';
 import { compare } from 'bcrypt';
-import { CookieOptions, Response } from 'express';
+import { CookieOptions, Request, Response } from 'express';
 import { OAuthUser } from 'src/common/types/auth.type';
+import { AccountService } from '../account/account.service';
 import { VerificationService } from '../email/verification/verification.service';
 import { UserService } from '../user/user.service';
 import { LoginDto, SignupDto } from './dto/auth.dto';
+import { UserSessionService } from './sessions/user-sessions.service';
 
 @Injectable()
 export class AuthService {
@@ -20,6 +23,8 @@ export class AuthService {
 		private readonly jwt: JwtService,
 		private readonly configService: ConfigService,
 		private readonly userService: UserService,
+		private readonly userSessionService: UserSessionService,
+		private readonly accountService: AccountService,
 		private readonly verificationService: VerificationService,
 	) {}
 
@@ -30,57 +35,46 @@ export class AuthService {
 		await this.verificationService.sendVerificationCode(dto);
 	}
 
-	async login(dto: LoginDto) {
+	async login(dto: LoginDto, ip: string, userAgent?: string) {
 		const user = await this.userService.findByEmail(dto.email);
 		if (!user) throw new NotFoundException('User not found');
 
-		const { password, ...rest } = user;
-
-		if (password) {
-			const isPasswordValid = await compare(dto.password, password as string);
-			if (!isPasswordValid) throw new BadRequestException('Invalid credentials');
-		} else {
-			throw new UnauthorizedException(
-				'This account was created via OAuth. Please log in with Google/GitHub',
-			);
+		if (!user.password) {
+			throw new UnauthorizedException('This account uses OAuth. Please log in with Google/GitHub');
 		}
 
-		const tokens = this.issueTokens(user.id);
+		const isPasswordValid = await compare(dto.password, user.password);
+		if (!isPasswordValid) throw new BadRequestException('Invalid credentials');
 
-		return { rest, ...tokens };
+		return this.issueTokens(user, ip, userAgent);
 	}
 
-	async loginWithOAuth(profile: OAuthUser) {
+	async loginWithOAuth(profile: OAuthUser, ip: string, userAgent?: string) {
 		const { provider, providerId, email, firstName, lastName, avatarUrl } = profile;
 
-		const existingAccount = await this.userService.findAccount(provider, providerId);
+		let user = await this.userService.findByEmail(email);
 
-		let user;
+		if (!user) {
+			user = await this.userService.create({
+				firstName,
+				lastName,
+				email,
+				password: null,
+				avatarUrl,
+			});
+		}
 
-		if (existingAccount) {
-			user = existingAccount.user;
-		} else {
-			user = await this.userService.findByEmail(email);
+		const existingAccount = await this.accountService.findAccount(provider, providerId);
 
-			if (!user) {
-				user = await this.userService.create({
-					firstName,
-					lastName,
-					email,
-					password: null,
-					avatarUrl,
-				});
-			}
-
-			await this.userService.createAccount({
+		if (!existingAccount) {
+			await this.accountService.create({
 				provider,
 				providerId,
 				userId: user.id,
 			});
 		}
 
-		const tokens = this.issueTokens(user.id);
-		return { user, ...tokens };
+		return this.issueTokens(user, ip, userAgent);
 	}
 
 	async refresh(refreshToken: string) {
@@ -90,61 +84,107 @@ export class AuthService {
 		const user = await this.userService.findById(result.id);
 		if (!user) throw new UnauthorizedException('User not found');
 
-		const tokens = this.issueTokens(user.id);
-
-		return { user, ...tokens };
+		return this.issueTokens(user, ip, userAgent);
 	}
 
-	redirect(res: Response, accessToken: string, refreshToken: string) {
-		this.addRefreshToken(res, refreshToken);
+	async handleLoginWithOAuth(req: Request, res: Response) {
+		const userAgent = req.headers['user-agent'] || '';
+		const result = await this.loginWithOAuth(req.user as OAuthUser, req.ip as string, userAgent);
 
-		const clientUrl =
-			this.configService.getOrThrow<string>('CLIENT_URL') ?? 'http://localhost:3000';
+		this.setAuthCookies(res, result.accessToken, result.refreshToken);
 
-		const redirectUrl = `${clientUrl}/oauth-callback?accessToken=${accessToken}`;
-
-		return res.redirect(redirectUrl);
+		return res.redirect(`${this.configService.get('CLIENT_URL')}/oauth-callback`);
 	}
 
-	issueTokens(userId: string) {
-		const data = { id: userId };
+	async logout(refreshToken: string, res: Response) {
+		const session = await this.userSessionService.findByToken(refreshToken);
+		if (!session) throw new UnauthorizedException('Invalid refresh token');
 
-		const accessToken = this.jwt.sign(data, {
-			expiresIn: '24h',
+		await this.userSessionService.revoke(session.id);
+		this.clearAuthCookies(res);
+	}
+
+	async refresh(refreshToken: string, ip: string, userAgent?: string) {
+		const session = await this.userSessionService.findByToken(refreshToken);
+		if (!session) throw new UnauthorizedException('Invalid or expired refresh token');
+
+		await this.userSessionService.revoke(session.id);
+
+		return this.issueTokens(session.user, ip, userAgent);
+	}
+
+	async issueTokens(user: User, ip: string, userAgent?: string) {
+		const accessToken = this.generateAccessToken(user.id);
+		const refreshToken = await this.createSession(user.id, ip, userAgent);
+		const { password, ...sanitizedUser } = user;
+
+		return {
+			user: sanitizedUser,
+			accessToken,
+			refreshToken,
+		};
+	}
+
+	private generateAccessToken(userId: string): string {
+		return this.jwt.sign(
+			{ id: userId },
+			{
+				expiresIn: this.configService.get<string>('JWT_ACCESS_EXPIRES_IN'),
+				subject: userId,
+				issuer: this.configService.get<string>('JWT_ISSUER'),
+				audience: this.configService.get<string>('JWT_AUDIENCE'),
+			},
+		);
+	}
+
+	private async createSession(userId: string, ip: string, userAgent?: string): Promise<string> {
+		const ttlDays = this.configService.get<number>('REFRESH_TOKEN_TTL_DAYS') as number;
+		const expiresIn = new Date(Date.now() + ttlDays * 24 * 60 * 60 * 1000);
+
+		return this.userSessionService.create({
+			userId,
+			createdByIp: ip,
+			userAgent,
+			expiresIn,
 		});
-
-		const refreshToken = this.jwt.sign(data, {
-			expiresIn: '15d',
-		});
-
-		return { accessToken, refreshToken };
 	}
 
-	addRefreshToken(res: Response, refreshToken: string) {
-		const isProd = this.configService.getOrThrow<string>('NODE_ENV') === 'production';
+	setAuthCookies(res: Response, accessToken: string, refreshToken: string) {
+		const isProd = this.configService.get<string>('NODE_ENV') === 'production';
+		const domain = this.configService.get<string>('COOKIE_DOMAIN') || undefined;
+		const ttlDays = this.configService.get<number>('REFRESH_TOKEN_TTL_DAYS') as number;
 
-		const cookieOptions: CookieOptions = {
+		const commonOptions: CookieOptions = {
 			httpOnly: true,
-			expires: new Date(Date.now() + 15 * 24 * 60 * 60 * 1000),
 			secure: isProd,
-			sameSite: isProd ? 'none' : 'lax',
-			path: '/',
+			sameSite: isProd ? 'lax' : 'none',
+			domain,
 		};
 
-		res.cookie('refreshToken', refreshToken, cookieOptions);
+		res.cookie('accessToken', accessToken, {
+			...commonOptions,
+			maxAge: 15 * 60 * 1000,
+		});
+
+		res.cookie('refreshToken', refreshToken, {
+			...commonOptions,
+			expires: new Date(Date.now() + ttlDays * 24 * 60 * 60 * 1000),
+		});
 	}
 
-	removeRefreshToken(res: Response) {
-		const cookieOptions: CookieOptions = {
+	clearAuthCookies(res: Response) {
+		const isProd = this.configService.get<string>('NODE_ENV') === 'production';
+		const domain = this.configService.get<string>('COOKIE_DOMAIN') || undefined;
+
+		const expiredOptions: CookieOptions = {
 			httpOnly: true,
+			secure: isProd,
+			sameSite: isProd ? 'lax' : 'none',
 			expires: new Date(0),
-			secure: true,
-			sameSite: 'none',
+			domain,
 		};
 
-		const domain = this.configService.get('SERVER_DOMAIN');
-		if (domain) cookieOptions.domain = domain;
-
-		res.cookie('refreshToken', cookieOptions);
+		res.cookie('accessToken', '', expiredOptions);
+		res.cookie('refreshToken', '', expiredOptions);
 	}
 }
