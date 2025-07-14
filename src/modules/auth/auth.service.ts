@@ -2,7 +2,6 @@ import {
 	BadRequestException,
 	ConflictException,
 	Injectable,
-	NotFoundException,
 	UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -37,14 +36,10 @@ export class AuthService {
 
 	async login(dto: LoginDto, ip: string, userAgent?: string) {
 		const user = await this.userService.findByEmail(dto.email);
-		if (!user) throw new NotFoundException('User not found');
+		if (!user || !user.password) throw new BadRequestException('Invalid credentials');
 
-		if (!user.password) {
-			throw new UnauthorizedException('This account uses OAuth. Please log in with Google/GitHub');
-		}
-
-		const isPasswordValid = await compare(dto.password, user.password);
-		if (!isPasswordValid) throw new BadRequestException('Invalid credentials');
+		const isMatch = await compare(dto.password, user.password);
+		if (!isMatch) throw new BadRequestException('Invalid credentials');
 
 		return this.issueTokens(user, ip, userAgent);
 	}
@@ -133,7 +128,7 @@ export class AuthService {
 
 		return this.userSessionService.create({
 			userId,
-			createdByIp: ip,
+			ip,
 			userAgent,
 			expiresIn,
 		});

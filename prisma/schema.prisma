@@ -60,13 +60,13 @@ model Token {
 }
 
 model UserSession {
-  id          String    @id @default(uuid())
-  token       String    @unique
-  createdByIp String    @map("created_by_ip")
-  userAgent   String?   @map("user_agent")
-  revoked     Boolean   @default(false)
-  revokedAt   DateTime? @map("revoked_at")
-  expiresIn   DateTime  @map("expires_in")
+  id        String    @id @default(uuid())
+  token     String    @unique
+  ip        String
+  userAgent String?   @map("user_agent")
+  revoked   Boolean   @default(false)
+  revokedAt DateTime? @map("revoked_at")
+  expiresIn DateTime  @map("expires_in")
 
   userId String @map("user_id")
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -75,6 +75,7 @@ model UserSession {
 
   @@index([id])
   @@index([userId])
+  @@index([ip, userAgent, revoked, expiresIn])
   @@map("user_sessions")
 }
 
