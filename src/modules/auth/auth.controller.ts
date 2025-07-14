@@ -5,7 +5,7 @@ import {
 	Authorization,
 	GitHubAuthorization,
 	GoogleAuthorization,
-} from 'src/common/decorators/auth.decorator';
+} from 'src/common/decorators/auth.decorators';
 import { RateLimit } from 'src/common/decorators/rate-limit.decorator';
 import { VerificationService } from '../email/verification/verification.service';
 import { AuthService } from './auth.service';
@@ -80,7 +80,6 @@ export class AuthController {
 	@Get('google')
 	googleAuth() {}
 
-	@Authorization()
 	@GoogleAuthorization()
 	@Get('google/callback')
 	async googleAuthCallback(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
@@ -90,7 +89,7 @@ export class AuthController {
 	@RateLimit()
 	@GitHubAuthorization()
 	@Get('github')
-	githubAuth() {}
+	githubAuth(): void {}
 
 	@GitHubAuthorization()
 	@Get('github/callback')

@@ -77,16 +77,6 @@ export class AuthService {
 		return this.issueTokens(user, ip, userAgent);
 	}
 
-	async refresh(refreshToken: string) {
-		const result = await this.jwt.verifyAsync(refreshToken);
-		if (!result) throw new UnauthorizedException('Invalid refresh token');
-
-		const user = await this.userService.findById(result.id);
-		if (!user) throw new UnauthorizedException('User not found');
-
-		return this.issueTokens(user, ip, userAgent);
-	}
-
 	async handleLoginWithOAuth(req: Request, res: Response) {
 		const userAgent = req.headers['user-agent'] || '';
 		const result = await this.loginWithOAuth(req.user as OAuthUser, req.ip as string, userAgent);
