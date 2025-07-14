@@ -110,7 +110,7 @@ export class VerificationService {
 
 		const dto = record.meta as SignupMeta;
 
-		const { password, ...user } = await this.prisma.user.create({
+		const user = await this.prisma.user.create({
 			data: {
 				firstName: dto.firstName,
 				lastName: dto.lastName,

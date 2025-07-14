@@ -8,7 +8,7 @@ import {
 import { genSalt, hash } from 'bcrypt';
 import { CloudinaryService } from 'src/common/libs/cloudinary/cloudinary.service';
 import { PrismaService } from 'src/common/prisma.service';
-import { AuthUser } from 'src/common/types/auth.type';
+import { UserDto } from './dto/user.dto';
 
 @Injectable()
 export class UserService {
@@ -27,14 +27,7 @@ export class UserService {
 		return this.prisma.user.findUnique({ where: { email } });
 	}
 
-	async findAccount(provider: string, providerId: string) {
-		return this.prisma.account.findUnique({
-			where: { provider_providerId: { provider, providerId } },
-			include: { user: true },
-		});
-	}
-
-	async create(dto: AuthUser) {
+	async create(dto: UserDto) {
 		const existingUser = await this.prisma.user.findUnique({
 			where: { email: dto.email },
 		});
@@ -50,17 +43,13 @@ export class UserService {
 
 		return this.prisma.user.create({
 			data: {
-				firstName: dto.firstName.trim(),
-				lastName: dto.lastName.trim(),
+				firstName: dto.firstName?.trim(),
+				lastName: dto.lastName?.trim(),
 				email: dto.email.trim().toLowerCase(),
 				password: pwd,
 				avatarUrl: dto.avatarUrl || null,
 			},
 		});
-	}
-
-	async createAccount(data: { provider: string; providerId: string; userId: string }) {
-		return this.prisma.account.create({ data });
 	}
 
 	async uploadAvatar(userId: string, file: Express.Multer.File): Promise<{ photo: string }> {
@@ -77,11 +66,15 @@ export class UserService {
 			}
 		}
 
-		let uploadResult;
+		let uploadResult: any;
 		try {
 			uploadResult = await this.cloudinary.uploadFile(file, {
 				invalidate: true,
 			});
+
+			const logger = new Logger(UserService.name);
+
+			logger.log('Upload resuld: ', uploadResult);
 		} catch (error) {
 			throw new BadRequestException('Failed to upload avatar');
 		}
