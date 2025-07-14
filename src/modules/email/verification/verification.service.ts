@@ -28,7 +28,7 @@ export class VerificationService {
 		return code;
 	}
 
-	public async sendVerificationCode(dto: SignupDto) {
+	async sendVerificationCode(dto: SignupDto) {
 		const existing = await this.prisma.token.findFirst({
 			where: { email: dto.email, type: TokenType.VERIFICATION },
 		});
@@ -36,10 +36,15 @@ export class VerificationService {
 		if (existing) {
 			const secondsElapsed = (Date.now() - new Date(existing.createdAt).getTime()) / 1000;
 
-			if (secondsElapsed < 60)
-				throw new ConflictException(
-					`Please wait ${Math.ceil(60 - secondsElapsed)} seconds before requesting a new code.`,
-				);
+			if (secondsElapsed < 60) {
+				const secondsToWait = Math.ceil(60 - secondsElapsed);
+				throw new ConflictException({
+					message: `Please wait ${secondsToWait} seconds before requesting a new code`,
+					error: 'Conflict',
+					statusCode: 409,
+					seconds: secondsToWait,
+				});
+			}
 
 			await this.prisma.token.delete({ where: { id: existing.id } });
 		}
@@ -68,7 +73,7 @@ export class VerificationService {
 		await this.mailService.sendVerificationCode(dto.email, code);
 	}
 
-	public async resendVerificationCode(email: string) {
+	async resendVerificationCode(email: string) {
 		const existing = await this.prisma.token.findFirst({
 			where: { email, type: TokenType.VERIFICATION },
 		});
@@ -77,10 +82,15 @@ export class VerificationService {
 
 		const secondsElapsed = (Date.now() - new Date(existing.createdAt).getTime()) / 1000;
 
-		if (secondsElapsed < 60)
-			throw new ConflictException(
-				`Please wait ${Math.ceil(60 - secondsElapsed)} seconds before requesting a new code`,
-			);
+		if (secondsElapsed < 60) {
+			const secondsToWait = Math.ceil(60 - secondsElapsed);
+			throw new ConflictException({
+				message: `Please wait ${secondsToWait} seconds before requesting a new code`,
+				error: 'Conflict',
+				statusCode: 409,
+				seconds: secondsToWait,
+			});
+		}
 
 		const newCode = this.generateVerificationCode();
 		const newExpires = new Date(Date.now() + 15 * 60 * 1000);
@@ -97,7 +107,7 @@ export class VerificationService {
 		await this.mailService.sendVerificationCode(email, newCode);
 	}
 
-	public async verifyCode(code: string) {
+	async verifyCode(code: string) {
 		const record = await this.prisma.token.findFirst({
 			where: { code, type: TokenType.VERIFICATION },
 		});

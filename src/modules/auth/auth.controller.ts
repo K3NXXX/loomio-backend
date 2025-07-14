@@ -1,5 +1,4 @@
 import { Body, Controller, Get, Post, Req, Res, UnauthorizedException } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { Request, Response } from 'express';
 import {
 	Authorization,
@@ -16,7 +15,6 @@ export class AuthController {
 	constructor(
 		private readonly authService: AuthService,
 		private readonly verificationService: VerificationService,
-		private readonly configService: ConfigService,
 	) {}
 
 	@Post('register')
