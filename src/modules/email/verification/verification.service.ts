@@ -73,7 +73,9 @@ export class VerificationService {
 		});
 
 		await this.mailService.sendVerificationCode(dto.email, code);
-		return expiresAt;
+
+		const canRequestAgainAt = new Date(Date.now() + 60 * 1000);
+		return canRequestAgainAt.toISOString();
 	}
 
 	async resendVerificationCode(dto: ResendCodeDto) {
