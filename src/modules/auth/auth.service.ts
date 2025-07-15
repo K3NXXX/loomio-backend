@@ -31,7 +31,7 @@ export class AuthService {
 		const existing = await this.userService.findByEmail(dto.email);
 		if (existing) throw new ConflictException('User with this email already exists');
 
-		await this.verificationService.sendVerificationCode(dto);
+		return this.verificationService.sendVerificationCode(dto);
 	}
 
 	async login(dto: LoginDto, ip: string, userAgent?: string) {

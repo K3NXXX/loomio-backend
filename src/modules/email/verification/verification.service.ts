@@ -73,6 +73,7 @@ export class VerificationService {
 		});
 
 		await this.mailService.sendVerificationCode(dto.email, code);
+		return expiresAt;
 	}
 
 	async resendVerificationCode(dto: ResendCodeDto) {

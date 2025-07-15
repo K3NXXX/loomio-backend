@@ -26,8 +26,9 @@ export class AuthController {
 
 	@Post('register')
 	async register(@Body() dto: SignupDto) {
-		await this.authService.register(dto);
-		return { message: 'Verification code sent to your email' };
+		const response = await this.authService.register(dto);
+
+		return { message: 'Verification code sent to your email', expiresAt: response };
 	}
 
 	@Post('register/verify')
