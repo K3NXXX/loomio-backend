@@ -7,14 +7,7 @@ import { AuthModule } from './modules/auth/auth.module';
 import { UserModule } from './modules/user/user.module';
 
 @Module({
-	imports: [
-		ConfigModule.forRoot({
-			isGlobal: true,
-		}),
-		UserModule,
-		AuthModule,
-		AccountModule,
-	],
+	imports: [ConfigModule.forRoot({ isGlobal: true }), UserModule, AuthModule, AccountModule],
 	controllers: [AppController],
 	providers: [AppService],
 })

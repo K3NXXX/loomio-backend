@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { compare, hashSync } from 'bcrypt';
 import { randomBytes, randomUUID } from 'crypto';
-import { PrismaService } from 'src/common/prisma.service';
+import { PrismaService } from 'src/common/prisma/prisma.service';
 import { UserSessionDto } from './dto/user-session.dto';
 
 @Injectable()
