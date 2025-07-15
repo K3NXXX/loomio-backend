@@ -48,12 +48,13 @@ model Token {
   email     String
   code      String
   type      TokenType
-  expiresIn DateTime  @map("expires_in")
+  expiresAt DateTime  @map("expires_at")
   meta      Json?
 
   createdAt DateTime @default(now()) @map("created_at")
 
   @@unique([email, type])
+  @@unique([code, type])
   @@index([email, type])
   @@index([code, type])
   @@map("tokens")
@@ -66,7 +67,7 @@ model UserSession {
   userAgent String?   @map("user_agent")
   revoked   Boolean   @default(false)
   revokedAt DateTime? @map("revoked_at")
-  expiresIn DateTime  @map("expires_in")
+  expiresAt DateTime  @map("expires_at")
 
   userId String @map("user_id")
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -75,7 +76,7 @@ model UserSession {
 
   @@index([id])
   @@index([userId])
-  @@index([ip, userAgent, revoked, expiresIn])
+  @@index([ip, userAgent, revoked, expiresAt])
   @@map("user_sessions")
 }
 

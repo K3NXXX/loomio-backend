@@ -50,13 +50,7 @@ export class AuthService {
 		let user = await this.userService.findByEmail(email);
 
 		if (!user) {
-			user = await this.userService.create({
-				firstName,
-				lastName,
-				email,
-				password: null,
-				avatarUrl,
-			});
+			user = await this.userService.create(firstName, lastName, email, null, avatarUrl);
 		}
 
 		const existingAccount = await this.accountService.findAccount(provider, providerId);
@@ -123,21 +117,21 @@ export class AuthService {
 	}
 
 	private async createSession(userId: string, ip: string, userAgent?: string): Promise<string> {
-		const ttlDays = this.configService.get<number>('REFRESH_TOKEN_TTL_DAYS') as number;
-		const expiresIn = new Date(Date.now() + ttlDays * 24 * 60 * 60 * 1000);
+		const ttlDays = this.configService.getOrThrow<number>('REFRESH_TOKEN_TTL_DAYS');
+		const expiresAt = new Date(Date.now() + ttlDays * 24 * 60 * 60 * 1000);
 
 		return this.userSessionService.create({
 			userId,
 			ip,
 			userAgent,
-			expiresIn,
+			expiresAt,
 		});
 	}
 
 	setAuthCookies(res: Response, accessToken: string, refreshToken: string) {
 		const isProd = this.configService.get<string>('NODE_ENV') === 'production';
-		const domain = this.configService.get<string>('COOKIE_DOMAIN') || undefined;
-		const ttlDays = this.configService.get<number>('REFRESH_TOKEN_TTL_DAYS') as number;
+		const domain = this.configService.getOrThrow<string>('COOKIE_DOMAIN');
+		const ttlDays = this.configService.getOrThrow<number>('REFRESH_TOKEN_TTL_DAYS');
 
 		const commonOptions: CookieOptions = {
 			httpOnly: true,

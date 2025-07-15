@@ -2,17 +2,13 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { compare, hashSync } from 'bcrypt';
 import { randomBytes, randomUUID } from 'crypto';
 import { PrismaService } from 'src/common/prisma.service';
+import { UserSessionDto } from './dto/user-session.dto';
 
 @Injectable()
 export class UserSessionService {
 	constructor(private readonly prisma: PrismaService) {}
 
-	async create(data: {
-		userId: string;
-		ip: string;
-		userAgent?: string;
-		expiresIn: Date;
-	}): Promise<string> {
+	async create(dto: UserSessionDto): Promise<string> {
 		const id = randomUUID();
 		const secret = randomBytes(32).toString('hex');
 		const token = hashSync(secret, 10);
@@ -22,14 +18,14 @@ export class UserSessionService {
 				where: {
 					OR: [
 						{
-							userId: data.userId,
-							OR: [{ revoked: true }, { expiresIn: { lt: new Date() } }],
+							userId: dto.userId,
+							OR: [{ revoked: true }, { expiresAt: { lt: new Date() } }],
 						},
 						{
-							ip: data.ip,
-							userAgent: data.userAgent,
+							ip: dto.ip,
+							userAgent: dto.userAgent,
 							revoked: false,
-							expiresIn: { gt: new Date() },
+							expiresAt: { gt: new Date() },
 						},
 					],
 				},
@@ -38,11 +34,11 @@ export class UserSessionService {
 			this.prisma.userSession.create({
 				data: {
 					id,
-					userId: data.userId,
+					userId: dto.userId,
 					token,
-					ip: data.ip,
-					userAgent: data.userAgent,
-					expiresIn: data.expiresIn,
+					ip: dto.ip,
+					userAgent: dto.userAgent,
+					expiresAt: dto.expiresAt,
 				},
 			}),
 		]);
@@ -59,7 +55,7 @@ export class UserSessionService {
 			include: { user: true },
 		});
 
-		if (!session || session.revoked || session.expiresIn < new Date()) return null;
+		if (!session || session.revoked || session.expiresAt < new Date()) return null;
 
 		const isMatch = await compare(secret, session.token);
 		if (!isMatch) return null;
@@ -72,7 +68,7 @@ export class UserSessionService {
 			where: {
 				userId,
 				revoked: false,
-				expiresIn: { gt: new Date() },
+				expiresAt: { gt: new Date() },
 			},
 			orderBy: { createdAt: 'desc' },
 		});
