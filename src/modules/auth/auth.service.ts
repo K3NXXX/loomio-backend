@@ -130,14 +130,13 @@ export class AuthService {
 
 	setAuthCookies(res: Response, accessToken: string, refreshToken: string) {
 		const isProd = this.configService.get<string>('NODE_ENV') === 'production';
-		const domain = this.configService.getOrThrow<string>('COOKIE_DOMAIN');
+		const domain = this.configService.get<string>('COOKIE_DOMAIN');
 		const ttlDays = this.configService.getOrThrow<number>('REFRESH_TOKEN_TTL_DAYS');
 
 		const commonOptions: CookieOptions = {
 			httpOnly: true,
 			secure: isProd,
 			sameSite: isProd ? 'lax' : 'none',
-			domain,
 		};
 
 		res.cookie('accessToken', accessToken, {

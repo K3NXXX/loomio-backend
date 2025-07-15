@@ -2,17 +2,14 @@ import {
 	BadRequestException,
 	ConflictException,
 	Injectable,
-	Logger,
 	NotFoundException,
 } from '@nestjs/common';
 import { genSalt, hash } from 'bcrypt';
 import { CloudinaryService } from 'src/common/libs/cloudinary/cloudinary.service';
-import { PrismaService } from 'src/common/prisma.service';
+import { PrismaService } from 'src/common/prisma/prisma.service';
 
 @Injectable()
 export class UserService {
-	private readonly logger = new Logger(UserService.name);
-
 	constructor(
 		private readonly prisma: PrismaService,
 		private readonly cloudinary: CloudinaryService,
@@ -82,7 +79,7 @@ export class UserService {
 			try {
 				await this.cloudinary.deleteFile(user.avatarPublicId);
 			} catch (error) {
-				this.logger.warn('Could not delete old avatar', error);
+				throw new Error('Could not delete old avatar', error);
 			}
 		}
 
@@ -91,10 +88,6 @@ export class UserService {
 			uploadResult = await this.cloudinary.uploadFile(file, {
 				invalidate: true,
 			});
-
-			const logger = new Logger(UserService.name);
-
-			logger.log('Upload resuld: ', uploadResult);
 		} catch (error) {
 			throw new BadRequestException('Failed to upload avatar');
 		}

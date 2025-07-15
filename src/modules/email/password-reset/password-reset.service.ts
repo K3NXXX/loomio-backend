@@ -8,7 +8,7 @@ import { TokenType } from '@prisma/client';
 import { MailService } from 'src/common/libs/mail/mail.service';
 import { generateCode, hashSecret } from 'src/common/utils/generate-code.util';
 import { UserService } from 'src/modules/user/user.service';
-import { PrismaService } from '../../../common/prisma.service';
+import { PrismaService } from '../../../common/prisma/prisma.service';
 
 @Injectable()
 export class PasswordResetService {

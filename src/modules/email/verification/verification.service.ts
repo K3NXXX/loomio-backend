@@ -10,7 +10,7 @@ import { MailService } from 'src/common/libs/mail/mail.service';
 import { generateCode, hashSecret } from 'src/common/utils/generate-code.util';
 import { SignupDto, SignupMeta } from 'src/modules/auth/dto/auth.dto';
 import { UserService } from 'src/modules/user/user.service';
-import { PrismaService } from '../../../common/prisma.service';
+import { PrismaService } from '../../../common/prisma/prisma.service';
 import { ResendCodeDto } from './dto/resend-code.dto';
 import { VerifyCodeDto } from './dto/verify-code.dto';
 

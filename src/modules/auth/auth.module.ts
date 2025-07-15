@@ -4,14 +4,14 @@ import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { jwtConfig } from 'src/common/configs/jwt.config';
 import { CloudinaryModule } from 'src/common/libs/cloudinary/cloudinary.module';
-import { PrismaService } from 'src/common/prisma.service';
+import { PrismaModule } from 'src/common/prisma/prisma.module';
 import { GithubStrategy } from 'src/common/strategies/github.strategy';
 import { GoogleStrategy } from 'src/common/strategies/google.strategy';
 import { JwtStrategy } from 'src/common/strategies/jwt.strategy';
-import { AccountService } from '../account/account.service';
+import { AccountModule } from '../account/account.module';
 import { PasswordResetModule } from '../email/password-reset/password-reset.module';
 import { VerificationModule } from '../email/verification/verification.module';
-import { UserService } from '../user/user.service';
+import { UserModule } from '../user/user.module';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { UserSessionService } from './sessions/user-sessions.service';
@@ -27,17 +27,12 @@ import { UserSessionService } from './sessions/user-sessions.service';
 		CloudinaryModule,
 		VerificationModule,
 		PasswordResetModule,
+		UserModule,
+		AccountModule,
+		PrismaModule,
 	],
 	controllers: [AuthController],
-	providers: [
-		AuthService,
-		JwtStrategy,
-		GoogleStrategy,
-		GithubStrategy,
-		UserService,
-		UserSessionService,
-		AccountService,
-		PrismaService,
-	],
+	providers: [AuthService, JwtStrategy, GoogleStrategy, GithubStrategy, UserSessionService],
+	exports: [AuthService],
 })
 export class AuthModule {}
