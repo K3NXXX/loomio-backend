@@ -9,6 +9,7 @@ import { GithubStrategy } from 'src/common/strategies/github.strategy';
 import { GoogleStrategy } from 'src/common/strategies/google.strategy';
 import { JwtStrategy } from 'src/common/strategies/jwt.strategy';
 import { AccountService } from '../account/account.service';
+import { PasswordResetModule } from '../email/password-reset/password-reset.module';
 import { VerificationModule } from '../email/verification/verification.module';
 import { UserService } from '../user/user.service';
 import { AuthController } from './auth.controller';
@@ -25,6 +26,7 @@ import { UserSessionService } from './sessions/user-sessions.service';
 		PassportModule.register({ session: false }),
 		CloudinaryModule,
 		VerificationModule,
+		PasswordResetModule,
 	],
 	controllers: [AuthController],
 	providers: [

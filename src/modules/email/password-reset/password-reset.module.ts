@@ -3,11 +3,11 @@ import { CloudinaryModule } from 'src/common/libs/cloudinary/cloudinary.module';
 import { MailModule } from 'src/common/libs/mail/mail.module';
 import { PrismaService } from 'src/common/prisma.service';
 import { UserService } from 'src/modules/user/user.service';
-import { VerificationService } from './verification.service';
+import { PasswordResetService } from './password-reset.service';
 
 @Module({
 	imports: [MailModule, CloudinaryModule],
-	providers: [VerificationService, PrismaService, UserService],
-	exports: [VerificationService],
+	providers: [PasswordResetService, PrismaService, UserService],
+	exports: [PasswordResetService],
 })
-export class VerificationModule {}
+export class PasswordResetModule {}

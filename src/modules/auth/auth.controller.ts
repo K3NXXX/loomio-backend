@@ -6,15 +6,22 @@ import {
 	GoogleAuthorization,
 } from 'src/common/decorators/auth.decorators';
 import { RateLimit } from 'src/common/decorators/rate-limit.decorator';
+import { PasswordResetDto } from '../email/password-reset/dto/password-reset.dto';
+import { RequestResetDto } from '../email/password-reset/dto/request-reset.dto';
+import { PasswordResetService } from '../email/password-reset/password-reset.service';
+import { ResendCodeDto } from '../email/verification/dto/resend-code.dto';
+import { VerifyCodeDto } from '../email/verification/dto/verify-code.dto';
 import { VerificationService } from '../email/verification/verification.service';
 import { AuthService } from './auth.service';
 import { LoginDto, SignupDto } from './dto/auth.dto';
 
+@RateLimit()
 @Controller('auth')
 export class AuthController {
 	constructor(
 		private readonly authService: AuthService,
 		private readonly verificationService: VerificationService,
+		private readonly passwordResetService: PasswordResetService,
 	) {}
 
 	@Post('register')
@@ -25,12 +32,12 @@ export class AuthController {
 
 	@Post('register/verify')
 	async verifyCode(
-		@Body('code') code: string,
+		@Body() dto: VerifyCodeDto,
 		@Req() req: Request,
 		@Res({ passthrough: true }) res: Response,
 	) {
 		const userAgent = req.headers['user-agent'] || '';
-		const user = await this.verificationService.verifyCode(code);
+		const user = await this.verificationService.verifyCode(dto);
 
 		const { accessToken, refreshToken } = await this.authService.issueTokens(
 			user,
@@ -49,12 +56,11 @@ export class AuthController {
 	}
 
 	@Post('register/resend')
-	async resendCode(@Body('email') email: string) {
-		await this.verificationService.resendVerificationCode(email);
+	async resendCode(@Body() dto: ResendCodeDto) {
+		await this.verificationService.resendVerificationCode(dto);
 		return { message: 'New verification code sent' };
 	}
 
-	@RateLimit()
 	@Post('login')
 	async login(
 		@Body() dto: LoginDto,
@@ -73,26 +79,14 @@ export class AuthController {
 		return { user };
 	}
 
-	@RateLimit()
-	@GoogleAuthorization()
-	@Get('google')
-	googleAuth() {}
-
-	@GoogleAuthorization()
-	@Get('google/callback')
-	async googleAuthCallback(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
-		return this.authService.handleLoginWithOAuth(req, res);
+	@Post('password-reset/request')
+	async sendResetToken(@Body() dto: RequestResetDto) {
+		return this.passwordResetService.sendPasswordResetToken(dto.email);
 	}
 
-	@RateLimit()
-	@GitHubAuthorization()
-	@Get('github')
-	githubAuth(): void {}
-
-	@GitHubAuthorization()
-	@Get('github/callback')
-	async githubCallback(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
-		return this.authService.handleLoginWithOAuth(req, res);
+	@Post('password-reset/confirm')
+	async resetPassword(@Body() dto: PasswordResetDto) {
+		return await this.passwordResetService.resetPassword(dto.token, dto.newPassword);
 	}
 
 	@Authorization()
@@ -122,5 +116,25 @@ export class AuthController {
 		this.authService.setAuthCookies(res, accessToken, newRefreshToken);
 
 		return { user };
+	}
+
+	@GoogleAuthorization()
+	@Get('google')
+	googleAuth() {}
+
+	@GoogleAuthorization()
+	@Get('google/callback')
+	async googleAuthCallback(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
+		return this.authService.handleLoginWithOAuth(req, res);
+	}
+
+	@GitHubAuthorization()
+	@Get('github')
+	githubAuth(): void {}
+
+	@GitHubAuthorization()
+	@Get('github/callback')
+	async githubCallback(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
+		return this.authService.handleLoginWithOAuth(req, res);
 	}
 }

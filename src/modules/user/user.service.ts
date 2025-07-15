@@ -8,7 +8,6 @@ import {
 import { genSalt, hash } from 'bcrypt';
 import { CloudinaryService } from 'src/common/libs/cloudinary/cloudinary.service';
 import { PrismaService } from 'src/common/prisma.service';
-import { UserDto } from './dto/user.dto';
 
 @Injectable()
 export class UserService {
@@ -27,28 +26,49 @@ export class UserService {
 		return this.prisma.user.findUnique({ where: { email } });
 	}
 
-	async create(dto: UserDto) {
+	async create(
+		firstName: string | null,
+		lastName: string | null,
+		email: string,
+		password: string | null,
+		avatarUrl?: string | null,
+	) {
 		const existingUser = await this.prisma.user.findUnique({
-			where: { email: dto.email },
+			where: { email },
 		});
 
-		if (existingUser) throw new ConflictException(`User with email ${dto.email} already exists`);
+		if (existingUser) throw new ConflictException(`User with email ${email} already exists`);
 
 		let pwd: string | null = null;
 
-		if (dto.password) {
+		if (password) {
 			const salt = await genSalt(10);
-			pwd = await hash(dto.password, salt);
+			pwd = await hash(password, salt);
 		}
 
 		return this.prisma.user.create({
 			data: {
-				firstName: dto.firstName?.trim(),
-				lastName: dto.lastName?.trim(),
-				email: dto.email.trim().toLowerCase(),
+				firstName: firstName?.trim(),
+				lastName: lastName?.trim(),
+				email: email.trim().toLowerCase(),
 				password: pwd,
-				avatarUrl: dto.avatarUrl || null,
+				avatarUrl: avatarUrl || null,
 			},
+		});
+	}
+
+	async updatePassword(id: string, password: string) {
+		if (!password) throw new ConflictException('Password is required');
+
+		const user = await this.findById(id);
+		if (!user) throw new NotFoundException('User not found');
+
+		const salt = await genSalt(10);
+		const pwd = await hash(password, salt);
+
+		await this.prisma.user.update({
+			where: { id },
+			data: { password: pwd },
 		});
 	}
 
