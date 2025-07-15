@@ -58,8 +58,8 @@ export class AuthController {
 
 	@Post('register/resend')
 	async resendCode(@Body() dto: ResendCodeDto) {
-		await this.verificationService.resendVerificationCode(dto);
-		return { message: 'New verification code sent' };
+		const response = await this.verificationService.resendVerificationCode(dto);
+		return { message: 'New verification code sent', expiresAt: response };
 	}
 
 	@Post('login')
