@@ -983,7 +983,7 @@
   resolved "https://registry.yarnpkg.com/@nestjs/axios/-/axios-4.0.0.tgz#520ff7c6238e635658fe334ee62db9d1b9c5546f"
   integrity sha512-1cB+Jyltu/uUPNQrpUimRHEQHrnQrpLzVj6dU3dgn6iDDDdahr10TgHFGTmw5VuJ9GzKZsCLDL78VSwJAs/9JQ==
 
-"@nestjs/cli@^11.0.0":
+"@nestjs/cli@^11.0.7":
   version "11.0.7"
   resolved "https://registry.yarnpkg.com/@nestjs/cli/-/cli-11.0.7.tgz#204a1969c2609d7cf5e98a4d65819bd8585bead7"
   integrity sha512-svrP8j1R0/lQVJ8ZI3BlDtuZxmkvVJokUJSB04sr6uibunk2wHeVDDVLZvYBUorCdGU/RHJl1IufhqUBM91vAQ==
