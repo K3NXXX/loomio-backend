@@ -8,6 +8,7 @@ import { TokenType } from '@prisma/client';
 import { hash } from 'bcrypt';
 import { MailService } from 'src/common/libs/mail/mail.service';
 import { generateCode, hashSecret } from 'src/common/utils/generate-code.util';
+import { getSecondsRemaining } from 'src/common/utils/seconds-remaining.util';
 import { SignupDto, SignupMeta } from 'src/modules/auth/dto/auth.dto';
 import { UserService } from 'src/modules/user/user.service';
 import { PrismaService } from '../../../common/prisma/prisma.service';
@@ -23,7 +24,7 @@ export class VerificationService {
 	) {}
 
 	async sendVerificationCode(dto: SignupDto) {
-		const existing = await this.prisma.token.findUnique({
+		const token = await this.prisma.token.findUnique({
 			where: {
 				email_type: {
 					email: dto.email,
@@ -32,28 +33,23 @@ export class VerificationService {
 			},
 		});
 
-		if (existing) {
-			const secondsElapsed = (Date.now() - new Date(existing.createdAt).getTime()) / 1000;
-			if (secondsElapsed < 60) {
-				const secondsToWait = Math.ceil(60 - secondsElapsed);
-				const expiresAt = new Date(Date.now() + secondsToWait * 1000).toISOString();
-
+		if (token) {
+			const waitTime = getSecondsRemaining(token.createdAt);
+			if (waitTime > 0) {
 				throw new ConflictException({
-					message: `Please wait ${secondsToWait} seconds before requesting a new code`,
-					expiresAt,
-					seconds: secondsToWait,
-					error: 'Conflict',
-					statusCode: 409,
+					message: `Please wait ${waitTime} seconds before requesting a new code.`,
+					expiresAt: new Date(Date.now() + waitTime * 1000),
 				});
 			}
 
-			await this.prisma.token.delete({ where: { id: existing.id } });
+			await this.prisma.token.delete({ where: { id: token.id } });
 		}
 
 		const hashedPassword = await hash(dto.password, 10);
 		const code = generateCode();
 		const hashedCode = hashSecret(code);
-		const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+		const tokenExpiresAt = new Date(Date.now() + 10 * 60 * 1000);
+		const throttleExpiresAt = new Date(Date.now() + 60 * 1000);
 
 		const meta: SignupMeta = {
 			firstName: dto.firstName,
@@ -66,7 +62,7 @@ export class VerificationService {
 			data: {
 				email: dto.email,
 				code: hashedCode,
-				expiresAt,
+				expiresAt: tokenExpiresAt,
 				type: TokenType.VERIFICATION,
 				meta,
 			},
@@ -74,12 +70,11 @@ export class VerificationService {
 
 		await this.mailService.sendVerificationCode(dto.email, code);
 
-		const canRequestAgainAt = new Date(Date.now() + 60 * 1000);
-		return canRequestAgainAt.toISOString();
+		return throttleExpiresAt;
 	}
 
 	async resendVerificationCode(dto: ResendCodeDto) {
-		const existing = await this.prisma.token.findUnique({
+		const token = await this.prisma.token.findUnique({
 			where: {
 				email_type: {
 					email: dto.email,
@@ -88,44 +83,38 @@ export class VerificationService {
 			},
 		});
 
-		if (!existing) throw new NotFoundException('No pending registration found for this email');
+		if (!token) throw new NotFoundException('No pending registration found for this email');
 
-		const secondsElapsed = (Date.now() - new Date(existing.createdAt).getTime()) / 1000;
-		if (secondsElapsed < 60) {
-			const secondsToWait = Math.ceil(60 - secondsElapsed);
-			const expiresAt = new Date(Date.now() + secondsToWait * 1000).toISOString();
-
+		const waitTime = getSecondsRemaining(token.createdAt);
+		if (waitTime > 0) {
 			throw new ConflictException({
-				message: `Please wait ${secondsToWait} seconds before requesting a new code`,
-				expiresAt,
-				seconds: secondsToWait,
-				error: 'Conflict',
-				statusCode: 409,
+				message: `Please wait ${waitTime} seconds before requesting a new code.`,
+				expiresAt: new Date(Date.now() + waitTime * 1000),
 			});
 		}
 
 		const code = generateCode();
 		const hashedCode = hashSecret(code);
-		const newExpires = new Date(Date.now() + 10 * 60 * 1000);
+		const tokenExpiresAt = new Date(Date.now() + 10 * 60 * 1000);
+		const throttleExpiresAt = new Date(Date.now() + 60 * 1000);
 
 		await this.prisma.token.update({
-			where: { id: existing.id },
+			where: { id: token.id },
 			data: {
 				code: hashedCode,
-				expiresAt: newExpires,
+				expiresAt: tokenExpiresAt,
 				createdAt: new Date(),
 			},
 		});
 
 		await this.mailService.sendVerificationCode(dto.email, code);
 
-		const canRequestAgainAt = new Date(Date.now() + 60 * 1000);
-		return canRequestAgainAt.toISOString();
+		return throttleExpiresAt;
 	}
 
 	async verifyCode(dto: VerifyCodeDto) {
 		const hashedCode = hashSecret(dto.code);
-		const record = await this.prisma.token.findUnique({
+		const token = await this.prisma.token.findUnique({
 			where: {
 				code_type: {
 					code: hashedCode,
@@ -134,15 +123,17 @@ export class VerificationService {
 			},
 		});
 
-		if (!record || new Date(record.expiresAt) < new Date()) {
-			if (record) await this.prisma.token.delete({ where: { id: record?.id } });
-			throw new BadRequestException('Invalid or expired code');
+		if (!token || new Date(token.expiresAt) < new Date()) {
+			if (token) await this.prisma.token.delete({ where: { id: token?.id } });
+			throw new BadRequestException(
+				'The verification code is invalid or has expired. Please request a new one',
+			);
 		}
 
-		const existingUser = await this.userService.findByEmail(record.email);
+		const existingUser = await this.userService.findByEmail(token.email);
 		if (existingUser) throw new ConflictException('User already verified');
 
-		const meta = record.meta as SignupMeta;
+		const meta = token.meta as SignupMeta;
 
 		const user = await this.prisma.user.create({
 			data: {
@@ -153,7 +144,7 @@ export class VerificationService {
 			},
 		});
 
-		await this.prisma.token.delete({ where: { id: record.id } });
+		await this.prisma.token.delete({ where: { id: token.id } });
 
 		return user;
 	}

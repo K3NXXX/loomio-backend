@@ -7,6 +7,7 @@ import {
 import { TokenType } from '@prisma/client';
 import { MailService } from 'src/common/libs/mail/mail.service';
 import { generateCode, hashSecret } from 'src/common/utils/generate-code.util';
+import { getSecondsRemaining } from 'src/common/utils/seconds-remaining.util';
 import { UserService } from 'src/modules/user/user.service';
 import { PrismaService } from '../../../common/prisma/prisma.service';
 
@@ -22,7 +23,7 @@ export class PasswordResetService {
 		const user = await this.userService.findByEmail(email);
 		if (!user) return false;
 
-		const existing = await this.prisma.token.findUnique({
+		const token = await this.prisma.token.findUnique({
 			where: {
 				email_type: {
 					email,
@@ -31,27 +32,21 @@ export class PasswordResetService {
 			},
 		});
 
-		if (existing) {
-			const secondsElapsed = (Date.now() - new Date(existing.createdAt).getTime()) / 1000;
-			if (secondsElapsed < 60) {
-				const secondsToWait = Math.ceil(60 - secondsElapsed);
-				const expiresAt = new Date(Date.now() + secondsToWait * 1000).toISOString();
-
+		if (token) {
+			const waitTime = getSecondsRemaining(token.createdAt);
+			if (waitTime > 0) {
 				throw new ConflictException({
-					message: `Please wait ${secondsToWait} seconds before requesting a new reset link`,
-					expiresAt,
-					seconds: secondsToWait,
-					error: 'Conflict',
-					statusCode: 409,
+					message: `Please wait ${waitTime} seconds before requesting a new code.`,
+					expiresAt: new Date(Date.now() + waitTime * 1000),
 				});
 			}
 
-			await this.prisma.token.delete({ where: { id: existing.id } });
+			await this.prisma.token.delete({ where: { id: token.id } });
 		}
 
 		const rawToken = generateCode(true);
 		const hashedToken = hashSecret(rawToken);
-		const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
+		const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
 
 		await this.prisma.token.create({
 			data: {
@@ -80,7 +75,9 @@ export class PasswordResetService {
 
 		if (!record || new Date(record.expiresAt) < new Date()) {
 			if (record) await this.prisma.token.delete({ where: { id: record?.id } });
-			throw new BadRequestException('Invalid or expired token ');
+			throw new BadRequestException(
+				'The password reset link is invalid or has expired. Please request a new one',
+			);
 		}
 
 		const user = await this.userService.findByEmail(record.email);
