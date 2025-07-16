@@ -74,7 +74,7 @@ export class AuthService {
 
 		await this.setAuthCookies(res, result.accessToken, result.refreshToken);
 
-		return res.redirect(`${this.configService.get('CLIENT_URL')}/dashboard`);
+		return res.json({ redirectUrl: `${this.configService.get('CLIENT_URL')}/oauth/callback` });
 	}
 
 	async logout(req: Request, res: Response) {
