@@ -46,19 +46,20 @@ export class PasswordResetService {
 
 		const rawToken = generateCode(true);
 		const hashedToken = hashSecret(rawToken);
-		const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+		const tokenExpiresAt = new Date(Date.now() + 10 * 60 * 1000);
+		const throttleExpiresAt = new Date(Date.now() + 60 * 1000);
 
 		await this.prisma.token.create({
 			data: {
 				email,
 				code: hashedToken,
-				expiresAt,
+				expiresAt: tokenExpiresAt,
 				type: TokenType.PASSWORD_RESET,
 			},
 		});
 
 		await this.mailService.sendPasswordResetToken(email, rawToken);
-		return true;
+		return { expiresAt: throttleExpiresAt };
 	}
 
 	async resetPassword(token: string, newPassword: string) {

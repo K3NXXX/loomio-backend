@@ -27,7 +27,6 @@ export class AuthController {
 	@Post('register')
 	async register(@Body() dto: SignupDto) {
 		const response = await this.authService.register(dto);
-
 		return { message: 'Verification code sent to your email', expiresAt: response };
 	}
 
@@ -39,7 +38,6 @@ export class AuthController {
 	) {
 		const userAgent = req.headers['user-agent'] || '';
 		const user = await this.verificationService.verifyCode(dto);
-
 		const { accessToken, refreshToken } = await this.authService.issueTokens(
 			user,
 			req.ip as string,
@@ -69,8 +67,7 @@ export class AuthController {
 		@Res({ passthrough: true }) res: Response,
 	) {
 		const { accessToken, refreshToken, user } = await this.authService.login(dto, req);
-
-		this.authService.setAuthCookies(res, accessToken, refreshToken);
+		await this.authService.setAuthCookies(res, accessToken, refreshToken);
 
 		return { user };
 	}
@@ -101,7 +98,7 @@ export class AuthController {
 			refreshToken: newRefreshToken,
 		} = await this.authService.refresh(req);
 
-		this.authService.setAuthCookies(res, accessToken, newRefreshToken);
+		await this.authService.setAuthCookies(res, accessToken, newRefreshToken);
 
 		return { user };
 	}

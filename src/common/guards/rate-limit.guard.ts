@@ -11,7 +11,7 @@ import { RateLimiterMemory } from 'rate-limiter-flexible';
 export class RateLimitGuard implements CanActivate {
 	private rateLimiter = new RateLimiterMemory({
 		points: 5,
-		duration: 60,
+		duration: 30,
 	});
 
 	async canActivate(context: ExecutionContext): Promise<boolean> {
