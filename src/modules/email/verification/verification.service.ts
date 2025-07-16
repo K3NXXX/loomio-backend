@@ -35,8 +35,13 @@ export class VerificationService {
 		if (existing) {
 			const secondsElapsed = (Date.now() - new Date(existing.createdAt).getTime()) / 1000;
 			if (secondsElapsed < 60) {
+				const secondsToWait = Math.ceil(60 - secondsElapsed);
+				const expiresAt = new Date(Date.now() + secondsToWait * 1000).toISOString();
+
 				throw new ConflictException({
-					message: `Please wait before requesting a new code`,
+					message: `Please wait ${secondsToWait} seconds before requesting a new code`,
+					expiresAt,
+					seconds: secondsToWait,
 					error: 'Conflict',
 					statusCode: 409,
 				});
@@ -87,8 +92,13 @@ export class VerificationService {
 
 		const secondsElapsed = (Date.now() - new Date(existing.createdAt).getTime()) / 1000;
 		if (secondsElapsed < 60) {
+			const secondsToWait = Math.ceil(60 - secondsElapsed);
+			const expiresAt = new Date(Date.now() + secondsToWait * 1000).toISOString();
+
 			throw new ConflictException({
-				message: `Please wait before requesting a new code`,
+				message: `Please wait ${secondsToWait} seconds before requesting a new code`,
+				expiresAt,
+				seconds: secondsToWait,
 				error: 'Conflict',
 				statusCode: 409,
 			});
