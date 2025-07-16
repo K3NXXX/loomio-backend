@@ -48,7 +48,7 @@ export class AuthController {
 
 		const { password, ...rest } = user;
 
-		this.authService.setAuthCookies(res, accessToken, refreshToken);
+		await this.authService.setAuthCookies(res, accessToken, refreshToken);
 
 		return {
 			message: 'Account verified and registered successfully!',

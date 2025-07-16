@@ -70,9 +70,9 @@ export class AuthService {
 		const userAgent = req.headers['user-agent'] || '';
 		const result = await this.loginWithOAuth(req.user as OAuthUser, req.ip as string, userAgent);
 
-		this.setAuthCookies(res, result.accessToken, result.refreshToken);
+		await this.setAuthCookies(res, result.accessToken, result.refreshToken);
 
-		return res.redirect(`${this.configService.get('CLIENT_URL')}/oauth-callback`);
+		return res.redirect(`${this.configService.get('CLIENT_URL')}/dashboard`);
 	}
 
 	async logout(refreshToken: string, res: Response) {
@@ -128,9 +128,8 @@ export class AuthService {
 		});
 	}
 
-	setAuthCookies(res: Response, accessToken: string, refreshToken: string) {
+	async setAuthCookies(res: Response, accessToken: string, refreshToken: string) {
 		const isProd = this.configService.get<string>('NODE_ENV') === 'production';
-		const domain = this.configService.get<string>('COOKIE_DOMAIN');
 		const ttlDays = this.configService.getOrThrow<number>('REFRESH_TOKEN_TTL_DAYS');
 
 		const commonOptions: CookieOptions = {
@@ -150,16 +149,14 @@ export class AuthService {
 		});
 	}
 
-	clearAuthCookies(res: Response) {
+	async clearAuthCookies(res: Response) {
 		const isProd = this.configService.get<string>('NODE_ENV') === 'production';
-		const domain = this.configService.get<string>('COOKIE_DOMAIN') || undefined;
 
 		const expiredOptions: CookieOptions = {
 			httpOnly: true,
 			secure: isProd,
 			sameSite: isProd ? 'lax' : 'none',
 			expires: new Date(0),
-			domain,
 		};
 
 		res.cookie('accessToken', '', expiredOptions);
