@@ -4,7 +4,7 @@ import {
 	Injectable,
 	NotFoundException,
 } from '@nestjs/common';
-import { genSalt, hash } from 'bcrypt';
+import { compare, genSalt, hash } from 'bcrypt';
 import { CloudinaryService } from 'src/common/libs/cloudinary/cloudinary.service';
 import { PrismaService } from 'src/common/prisma/prisma.service';
 
@@ -60,6 +60,10 @@ export class UserService {
 		const user = await this.findById(id);
 		if (!user) throw new NotFoundException('User not found');
 
+		const isSamePassword = await compare(password, user.password as string);
+		if (isSamePassword)
+			throw new ConflictException('The new password must be different from the current password');
+
 		const salt = await genSalt(10);
 		const pwd = await hash(password, salt);
 
@@ -104,7 +108,7 @@ export class UserService {
 	}
 
 	async deleteAvatar(userId: string): Promise<boolean> {
-		const user = await this.prisma.user.findUnique({ where: { id: userId } });
+		const user = await this.findById(userId);
 		if (!user) throw new NotFoundException('User not found');
 
 		if (user.avatarPublicId) {

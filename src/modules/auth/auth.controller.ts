@@ -86,7 +86,7 @@ export class AuthController {
 
 	@Post('password-reset/confirm')
 	async resetPassword(@Body() dto: PasswordResetDto) {
-		return await this.passwordResetService.resetPassword(dto.token, dto.newPassword);
+		return await this.passwordResetService.resetPassword(dto.token, dto.password);
 	}
 
 	@Authorization()
