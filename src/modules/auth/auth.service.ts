@@ -140,13 +140,11 @@ export class AuthService {
 	async setAuthCookies(res: Response, accessToken: string, refreshToken: string) {
 		const isProd = this.configService.get<string>('NODE_ENV') === 'production';
 		const ttlDays = this.configService.getOrThrow<number>('REFRESH_TOKEN_TTL_DAYS');
-		const domain = this.configService.get<string>('COOKIE_DOMAIN');
 
 		const commonOptions: CookieOptions = {
 			httpOnly: true,
 			secure: isProd,
 			sameSite: isProd ? 'none' : 'lax',
-			domain: isProd ? domain : undefined,
 		};
 
 		res.cookie('accessToken', accessToken, {
@@ -162,13 +160,11 @@ export class AuthService {
 
 	async clearAuthCookies(res: Response) {
 		const isProd = this.configService.get<string>('NODE_ENV') === 'production';
-		const domain = this.configService.get<string>('COOKIE_DOMAIN');
 
 		const expiredOptions: CookieOptions = {
 			httpOnly: true,
 			secure: isProd,
 			sameSite: isProd ? 'none' : 'lax',
-			domain: isProd ? domain : undefined,
 			expires: new Date(0),
 		};
 
