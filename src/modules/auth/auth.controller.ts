@@ -103,14 +103,19 @@ export class AuthController {
 		return { user };
 	}
 
+	@Get('callback')
+	async callback(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
+		return this.authService.handleCallback(req, res);
+	}
+
 	@GoogleAuthorization()
 	@Get('google')
 	googleAuth() {}
 
 	@GoogleAuthorization()
 	@Get('google/callback')
-	async googleAuthCallback(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
-		return this.authService.handleLoginWithOAuth(req, res);
+	googleAuthCallback(@Res({ passthrough: true }) res: Response) {
+		return this.authService.handleRedirect(res);
 	}
 
 	@GitHubAuthorization()
@@ -119,7 +124,7 @@ export class AuthController {
 
 	@GitHubAuthorization()
 	@Get('github/callback')
-	async githubCallback(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
-		return this.authService.handleLoginWithOAuth(req, res);
+	githubCallback(@Res({ passthrough: true }) res: Response) {
+		return this.authService.handleRedirect(res);
 	}
 }

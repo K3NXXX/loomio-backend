@@ -46,7 +46,7 @@ export class AuthService {
 		return this.issueTokens(user, req.ip as string, userAgent);
 	}
 
-	async loginWithOAuth(profile: OAuthUser, ip: string, userAgent?: string) {
+	async oauthLogin(profile: OAuthUser, ip: string, userAgent?: string) {
 		const { provider, providerId, email, firstName, lastName, avatarUrl } = profile;
 
 		let user = await this.userService.findByEmail(email);
@@ -68,12 +68,14 @@ export class AuthService {
 		return this.issueTokens(user, ip, userAgent);
 	}
 
-	async handleLoginWithOAuth(req: Request, res: Response) {
+	async handleCallback(req: Request, res: Response) {
 		const userAgent = req.headers['user-agent'] || '';
-		const result = await this.loginWithOAuth(req.user as OAuthUser, req.ip as string, userAgent);
+		const result = await this.oauthLogin(req.user as OAuthUser, req.ip as string, userAgent);
 
 		await this.setAuthCookies(res, result.accessToken, result.refreshToken);
+	}
 
+	handleRedirect(res: Response) {
 		return res.json({ redirectUrl: `${this.configService.get('CLIENT_URL')}/oauth/callback` });
 	}
 
