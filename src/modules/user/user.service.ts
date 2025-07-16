@@ -55,24 +55,28 @@ export class UserService {
 	}
 
 	async updatePassword(id: string, password: string) {
-		if (!password) throw new ConflictException('Password is required');
-
-		const user = await this.findById(id);
-		if (!user) throw new NotFoundException('User not found');
-
-		const isSamePassword = await compare(password, user.password as string);
-		if (isSamePassword)
-			throw new ConflictException('The new password must be different from the current password');
-
-		const salt = await genSalt(10);
-		const pwd = await hash(password, salt);
-
-		await this.prisma.user.update({
-			where: { id },
-			data: { password: pwd },
-		});
+	if (!password) {
+		throw new ConflictException('Password is required');
 	}
 
+	const user = await this.findById(id);
+	if (!user) throw new NotFoundException('User not found');
+
+	if (user.password) {
+		const isSamePassword = await compare(password, user.password);
+		if (isSamePassword) {
+			throw new ConflictException('The new password must be different from the current password');
+		}
+	}
+
+	const salt = await genSalt(10);
+	const hashedPassword = await hash(password, salt);
+
+	await this.prisma.user.update({
+		where: { id },
+		data: { password: hashedPassword },
+	});
+}
 	async uploadAvatar(userId: string, file: Express.Multer.File): Promise<{ photo: string }> {
 		if (!file) throw new BadRequestException('File is required');
 
