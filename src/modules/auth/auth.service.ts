@@ -34,14 +34,16 @@ export class AuthService {
 		return this.verificationService.sendVerificationCode(dto);
 	}
 
-	async login(dto: LoginDto, ip: string, userAgent?: string) {
+	async login(dto: LoginDto, req: Request) {
 		const user = await this.userService.findByEmail(dto.email);
 		if (!user || !user.password) throw new BadRequestException('Invalid credentials');
 
 		const isMatch = await compare(dto.password, user.password);
 		if (!isMatch) throw new BadRequestException('Invalid credentials');
 
-		return this.issueTokens(user, ip, userAgent);
+		const userAgent = req.headers['user-agent'] || '';
+
+		return this.issueTokens(user, req.ip as string, userAgent);
 	}
 
 	async loginWithOAuth(profile: OAuthUser, ip: string, userAgent?: string) {
@@ -75,7 +77,10 @@ export class AuthService {
 		return res.redirect(`${this.configService.get('CLIENT_URL')}/dashboard`);
 	}
 
-	async logout(refreshToken: string, res: Response) {
+	async logout(req: Request, res: Response) {
+		const refreshToken = req.cookies['refreshToken'];
+		if (!refreshToken) throw new UnauthorizedException('Refresh token missing');
+
 		const session = await this.userSessionService.findByToken(refreshToken);
 		if (!session) throw new UnauthorizedException('Invalid refresh token');
 
@@ -83,13 +88,17 @@ export class AuthService {
 		this.clearAuthCookies(res);
 	}
 
-	async refresh(refreshToken: string, ip: string, userAgent?: string) {
+	async refresh(req: Request) {
+		const refreshToken = req.cookies['refreshToken'];
+		if (!refreshToken) throw new UnauthorizedException('Refresh token missing');
+
 		const session = await this.userSessionService.findByToken(refreshToken);
 		if (!session) throw new UnauthorizedException('Invalid or expired refresh token');
 
-		await this.userSessionService.revoke(session.id);
+		const userAgent = req.headers['user-agent'] || '';
 
-		return this.issueTokens(session.user, ip, userAgent);
+		await this.userSessionService.revoke(session.id);
+		return this.issueTokens(session.user, req.ip as string, userAgent);
 	}
 
 	async issueTokens(user: User, ip: string, userAgent?: string) {
@@ -131,11 +140,13 @@ export class AuthService {
 	async setAuthCookies(res: Response, accessToken: string, refreshToken: string) {
 		const isProd = this.configService.get<string>('NODE_ENV') === 'production';
 		const ttlDays = this.configService.getOrThrow<number>('REFRESH_TOKEN_TTL_DAYS');
+		const domain = this.configService.get<string>('COOKIE_DOMAIN');
 
 		const commonOptions: CookieOptions = {
 			httpOnly: true,
 			secure: isProd,
-			sameSite: isProd ? 'lax' : 'none',
+			sameSite: isProd ? 'none' : 'lax',
+			domain: isProd ? domain : undefined,
 		};
 
 		res.cookie('accessToken', accessToken, {
@@ -151,11 +162,13 @@ export class AuthService {
 
 	async clearAuthCookies(res: Response) {
 		const isProd = this.configService.get<string>('NODE_ENV') === 'production';
+		const domain = this.configService.get<string>('COOKIE_DOMAIN');
 
 		const expiredOptions: CookieOptions = {
 			httpOnly: true,
 			secure: isProd,
-			sameSite: isProd ? 'lax' : 'none',
+			sameSite: isProd ? 'none' : 'lax',
+			domain: isProd ? domain : undefined,
 			expires: new Date(0),
 		};
 

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, Req, Res, UnauthorizedException } from '@nestjs/common';
+import { Body, Controller, Get, Post, Req, Res } from '@nestjs/common';
 import { Request, Response } from 'express';
 import {
 	Authorization,
@@ -68,12 +68,7 @@ export class AuthController {
 		@Req() req: Request,
 		@Res({ passthrough: true }) res: Response,
 	) {
-		const userAgent = req.headers['user-agent'] || '';
-		const { accessToken, refreshToken, user } = await this.authService.login(
-			dto,
-			req.ip as string,
-			userAgent,
-		);
+		const { accessToken, refreshToken, user } = await this.authService.login(dto, req);
 
 		this.authService.setAuthCookies(res, accessToken, refreshToken);
 
@@ -93,26 +88,18 @@ export class AuthController {
 	@Authorization()
 	@Post('logout')
 	async logout(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
-		const refreshToken = req.cookies['refreshToken'];
-		if (!refreshToken) throw new UnauthorizedException('Refresh token missing');
-
-		await this.authService.logout(refreshToken, res);
-
+		await this.authService.logout(req, res);
 		return { message: 'Logged out successfully' };
 	}
 
 	@Authorization()
 	@Post('refresh')
 	async refresh(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
-		const refreshToken = req.cookies['refreshToken'];
-		if (!refreshToken) throw new UnauthorizedException('Refresh token missing');
-
-		const userAgent = req.headers['user-agent'] || '';
 		const {
 			user,
 			accessToken,
 			refreshToken: newRefreshToken,
-		} = await this.authService.refresh(refreshToken, req.ip as string, userAgent);
+		} = await this.authService.refresh(req);
 
 		this.authService.setAuthCookies(res, accessToken, newRefreshToken);
 
