@@ -9,22 +9,33 @@ datasource db {
 }
 
 model User {
-  id             String  @id @default(uuid())
-  firstName      String? @map("first_name") @db.VarChar(100)
-  lastName       String? @map("last_name") @db.VarChar(100)
-  email          String  @unique @db.VarChar(255)
-  password       String? @db.VarChar(255)
+  id       String  @id @default(uuid())
+  fullName String  @map("full_name") @db.VarChar(50)
+  username String  @unique @db.VarChar(39)
+  email    String  @unique @db.VarChar(255)
+  password String? @db.VarChar(255)
+
   avatarUrl      String? @map("avatar_url")
   avatarPublicId String? @map("avatar_public_id")
 
-  role     UserRole      @default(USER)
+  role     UserRole @default(USER)
+  bio      String?  @db.Text
+  isActive Boolean  @default(true) @map("is_active")
+
   accounts Account[]
   sessions UserSession[]
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  @@index([id])
+  projects       Project[]
+  projectMembers ProjectMember[]
+  tasks          Task[]
+  projectInvites ProjectInvite[]
+  activities     ActivityLog[]
+  notifications  Notification[]
+  сomments      Comment[]
+
   @@index([email])
   @@index([role])
   @@map("users")
@@ -74,11 +85,196 @@ model UserSession {
 
   createdAt DateTime @default(now()) @map("created_at")
 
-  @@index([id])
   @@index([userId])
   @@index([ip, userAgent, revoked, expiresAt])
   @@map("user_sessions")
 }
+
+model Project {
+  id          String  @id @default(uuid())
+  name        String  @db.VarChar(100)
+  description String? @db.Text
+  color       String? @db.VarChar(20)
+
+  ownerId String @map("owner_id")
+  owner   User   @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  settingsId String?
+  settings   ProjectSettings? @relation(fields: [settingsId], references: [id])
+
+  members    ProjectMember[]
+  tasks      Task[]
+  tags       ProjectTag[]
+  invites    ProjectInvite[]
+  activities ActivityLog[]
+
+  isArchived Boolean @default(false) @map("is_archived")
+  isPrivate  Boolean @default(true) @map("is_private")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([ownerId])
+  @@map("projects")
+}
+
+model ProjectSettings {
+  id              String  @id @default(uuid())
+  defaultView     String? @default("list")
+  notificationsOn Boolean @default(true)
+  archivedVisible Boolean @default(false)
+  integrationJson Json?
+
+  project Project[]
+
+  @@map("project_settings")
+}
+
+model ProjectMember {
+  id String @id @default(uuid())
+
+  userId    String @map("user_id")
+  projectId String @map("project_id")
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  role MemberRole @default(MEMBER)
+
+  joinedAt DateTime @default(now()) @map("joined_at")
+
+  @@unique([userId, projectId])
+  @@index([projectId])
+  @@map("project_members")
+}
+
+model Task {
+  id          String       @id @default(uuid())
+  title       String       @db.VarChar(150)
+  description String?      @db.Text
+  status      TaskStatus   @default(TODO)
+  priority    TaskPriority @default(MEDIUM)
+  order       Int?
+
+  projectId String  @map("project_id")
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  assignedToId String? @map("assigned_to_id")
+  assignedTo   User?   @relation(fields: [assignedToId], references: [id])
+
+  dueDate     DateTime? @map("due_date")
+  completedAt DateTime? @map("completed_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tags       TaskTag[]
+  comments   Comment[]
+  activities ActivityLog[]
+
+  @@index([projectId, status])
+  @@map("tasks")
+}
+
+model ProjectInvite {
+  id    String     @id @default(uuid())
+  email String     @db.VarChar(255)
+  role  MemberRole @default(MEMBER)
+
+  token      String    @unique
+  expiresAt  DateTime  @map("expires_at")
+  acceptedAt DateTime?
+
+  status InviteStatus @default(PENDING)
+
+  projectId String  @map("project_id")
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  invitedById String @map("invited_by_id")
+  invitedBy   User   @relation(fields: [invitedById], references: [id])
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@unique([email, projectId])
+  @@index([projectId])
+  @@map("project_invites")
+}
+
+model ProjectTag {
+  id          String  @id @default(uuid())
+  name        String  @db.VarChar(30)
+  color       String? @db.VarChar(20)
+  description String?
+
+  projectId String  @map("project_id")
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  tasks TaskTag[]
+
+  @@unique([name, projectId])
+  @@map("project_tags")
+}
+
+model TaskTag {
+  taskId String @map("task_id")
+  tagId  String @map("tag_id")
+
+  task Task       @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  tag  ProjectTag @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([taskId, tagId])
+  @@map("task_tags")
+}
+
+model Comment {
+  id       String @id @default(uuid())
+  body     String @db.Text
+  authorId String @map("author_id")
+  taskId   String @map("task_id")
+
+  author User @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  task   Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([taskId])
+  @@map("comments")
+}
+
+model Notification {
+  id      String  @id @default(uuid())
+  type    String
+  message String
+  read    Boolean @default(false)
+  userId  String  @map("user_id")
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([userId, read])
+  @@map("notifications")
+}
+
+model ActivityLog {
+  id        String  @id @default(uuid())
+  type      String
+  metadata  Json?
+  userId    String  @map("user_id")
+  projectId String? @map("project_id")
+  taskId    String? @map("task_id")
+
+  user    User     @relation(fields: [userId], references: [id])
+  project Project? @relation(fields: [projectId], references: [id])
+  task    Task?    @relation(fields: [taskId], references: [id])
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([type])
+  @@index([projectId])
+  @@map("activity_logs")
+}
+
+// 🔐 ENUMS
 
 enum UserRole {
   USER
@@ -90,4 +286,32 @@ enum TokenType {
   TWO_FACTOR
   PASSWORD_RESET
   EMAIL_CHANGE
+}
+
+enum MemberRole {
+  OWNER
+  ADMIN
+  MEMBER
+  VIEWER
+}
+
+enum TaskStatus {
+  TODO
+  IN_PROGRESS
+  DONE
+  BLOCKED
+  ARCHIVED
+}
+
+enum TaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum InviteStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
 }
