@@ -34,7 +34,8 @@ model User {
   projectInvites ProjectInvite[]
   activities     ActivityLog[]
   notifications  Notification[]
-  сomments      Comment[]
+  comments       Comment[]
+  files          FileAttachment[]
 
   @@index([email])
   @@index([role])
@@ -99,8 +100,7 @@ model Project {
   ownerId String @map("owner_id")
   owner   User   @relation(fields: [ownerId], references: [id], onDelete: Cascade)
 
-  settingsId String?
-  settings   ProjectSettings? @relation(fields: [settingsId], references: [id])
+  settings ProjectSettings?
 
   members    ProjectMember[]
   tasks      Task[]
@@ -125,7 +125,8 @@ model ProjectSettings {
   archivedVisible Boolean @default(false)
   integrationJson Json?
 
-  project Project[]
+  projectId String  @unique
+  project   Project @relation(fields: [projectId], references: [id])
 
   @@map("project_settings")
 }
@@ -146,34 +147,6 @@ model ProjectMember {
   @@unique([userId, projectId])
   @@index([projectId])
   @@map("project_members")
-}
-
-model Task {
-  id          String       @id @default(uuid())
-  title       String       @db.VarChar(150)
-  description String?      @db.Text
-  status      TaskStatus   @default(TODO)
-  priority    TaskPriority @default(MEDIUM)
-  order       Int?
-
-  projectId String  @map("project_id")
-  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
-
-  assignedToId String? @map("assigned_to_id")
-  assignedTo   User?   @relation(fields: [assignedToId], references: [id])
-
-  dueDate     DateTime? @map("due_date")
-  completedAt DateTime? @map("completed_at")
-
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
-
-  tags       TaskTag[]
-  comments   Comment[]
-  activities ActivityLog[]
-
-  @@index([projectId, status])
-  @@map("tasks")
 }
 
 model ProjectInvite {
@@ -215,6 +188,52 @@ model ProjectTag {
   @@map("project_tags")
 }
 
+model Task {
+  id          String       @id @default(uuid())
+  title       String       @db.VarChar(150)
+  description String?      @db.Text
+  status      TaskStatus   @default(TODO)
+  priority    TaskPriority @default(MEDIUM)
+  order       Int?
+
+  projectId String  @map("project_id")
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  assignedToId String? @map("assigned_to_id")
+  assignedTo   User?   @relation(fields: [assignedToId], references: [id], onDelete: SetNull)
+
+  dueDate     DateTime? @map("due_date")
+  completedAt DateTime? @map("completed_at")
+
+  tags       TaskTag[]
+  comments   Comment[]
+  activities ActivityLog[]
+  file       FileAttachment[]
+
+  blockedBy TaskDependency[] @relation("BlockedTasks")
+  blocks    TaskDependency[] @relation("BlockerTasks")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@unique([title, projectId])
+  @@index([projectId, status])
+  @@index([dueDate])
+  @@index([completedAt])
+  @@map("tasks")
+}
+
+model TaskDependency {
+  blockerId String @map("blocker_id")
+  blockedId String @map("blocked_id")
+
+  blocker Task @relation("BlockerTasks", fields: [blockerId], references: [id], onDelete: Cascade)
+  blocked Task @relation("BlockedTasks", fields: [blockedId], references: [id], onDelete: Cascade)
+
+  @@id([blockerId, blockedId])
+  @@map("task_dependencies")
+}
+
 model TaskTag {
   taskId String @map("task_id")
   tagId  String @map("tag_id")
@@ -232,8 +251,9 @@ model Comment {
   authorId String @map("author_id")
   taskId   String @map("task_id")
 
-  author User @relation(fields: [authorId], references: [id], onDelete: Cascade)
-  task   Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  author User             @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  task   Task             @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  file   FileAttachment[]
 
   createdAt DateTime @default(now()) @map("created_at")
 
@@ -241,13 +261,42 @@ model Comment {
   @@map("comments")
 }
 
+model FileAttachment {
+  id       String  @id @default(uuid())
+  name     String  @db.VarChar(255)
+  url      String  @db.Text
+  publicId String?
+  sizeKb   Int?
+  mimeType String? @map("mime_type")
+
+  taskId String? @map("task_id")
+  task   Task?   @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  commentId String?  @map("comment_id")
+  comment   Comment? @relation(fields: [commentId], references: [id], onDelete: Cascade)
+
+  uploadedById String @map("uploaded_by_id")
+  uploadedBy   User   @relation(fields: [uploadedById], references: [id])
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([taskId])
+  @@index([commentId])
+  @@map("file_attachments")
+}
+
 model Notification {
   id      String  @id @default(uuid())
   type    String
   message String
   read    Boolean @default(false)
-  userId  String  @map("user_id")
-  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  taskId    String? @map("task_id")
+  projectId String? @map("project_id")
+  commentId String? @map("comment_id")
+
+  userId String @map("user_id")
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   createdAt DateTime @default(now()) @map("created_at")
 
@@ -274,7 +323,7 @@ model ActivityLog {
   @@map("activity_logs")
 }
 
-// 🔐 ENUMS
+// ENUMS
 
 enum UserRole {
   USER
