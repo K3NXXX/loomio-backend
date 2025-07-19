@@ -71,9 +71,11 @@ export class AuthService {
 	async handleCallback(req: Request, res: Response) {
 		const userAgent = req.headers['user-agent'] || '';
 		const result = await this.oauthLogin(req.user as OAuthUser, req.ip as string, userAgent);
+		const clientUrl = await this.configService.get('CLIENT_URL');
 
 		await this.setAuthCookies(res, result.accessToken, result.refreshToken);
-		return res.json({ redirectUrl: `${this.configService.get('CLIENT_URL')}/dashboard` });
+
+		return res.redirect(`${clientUrl}/callback`);
 	}
 
 	async logout(req: Request, res: Response) {
@@ -101,7 +103,7 @@ export class AuthService {
 	}
 
 	async issueTokens(user: User, ip: string, userAgent?: string) {
-		const accessToken = this.generateAccessToken(user.id);
+		const accessToken = await this.generateAccessToken(user.id);
 		const refreshToken = await this.createSession(user.id, ip, userAgent);
 		const { password, ...sanitizedUser } = user;
 
@@ -112,14 +114,12 @@ export class AuthService {
 		};
 	}
 
-	private generateAccessToken(userId: string): string {
-		return this.jwt.sign(
+	private async generateAccessToken(userId: string): Promise<string> {
+		return this.jwt.signAsync(
 			{ id: userId },
 			{
 				expiresIn: this.configService.get<string>('JWT_ACCESS_EXPIRES_IN'),
 				subject: userId,
-				issuer: this.configService.get<string>('JWT_ISSUER'),
-				audience: this.configService.get<string>('JWT_AUDIENCE'),
 			},
 		);
 	}
@@ -137,13 +137,15 @@ export class AuthService {
 	}
 
 	async setAuthCookies(res: Response, accessToken: string, refreshToken: string) {
-		const isProd = this.configService.get<string>('NODE_ENV') === 'production';
+		const isProduction = this.configService.get<string>('NODE_ENV') === 'production';
 		const ttlDays = this.configService.getOrThrow<number>('REFRESH_TOKEN_TTL_DAYS');
 
 		const commonOptions: CookieOptions = {
 			httpOnly: true,
-			secure: isProd,
-			sameSite: isProd ? 'none' : 'lax',
+			secure: isProduction,
+			sameSite: isProduction ? 'none' : 'lax',
+			path: '/',
+			partitioned: isProduction,
 		};
 
 		res.cookie('accessToken', accessToken, {
@@ -158,12 +160,14 @@ export class AuthService {
 	}
 
 	async clearAuthCookies(res: Response) {
-		const isProd = this.configService.get<string>('NODE_ENV') === 'production';
+		const isProduction = this.configService.get<string>('NODE_ENV') === 'production';
 
 		const expiredOptions: CookieOptions = {
 			httpOnly: true,
-			secure: isProd,
-			sameSite: isProd ? 'none' : 'lax',
+			secure: isProduction,
+			sameSite: isProduction ? 'none' : 'lax',
+			path: '/',
+			partitioned: isProduction,
 			expires: new Date(0),
 		};
 
