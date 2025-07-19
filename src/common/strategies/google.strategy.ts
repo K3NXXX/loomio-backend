@@ -23,13 +23,16 @@ export class GoogleStrategy extends PassportStrategy(Strategy, 'google') {
 	): Promise<any> {
 		const { id, emails, name, photos } = profile;
 
+		const fullName = `${name.givenName} ${name.familyName}`.trim();
+		const email = emails[0]?.value;
+
 		const user = {
 			provider: 'google',
 			providerId: id,
-			email: emails[0].value,
-			firstName: name.givenName,
-			lastName: name.familyName,
-			avatarUrl: photos[0]?.value,
+			email,
+			fullName,
+			username: email.split('@')[0],
+			avatarUrl: photos?.[0]?.value,
 		};
 
 		done(null, user);

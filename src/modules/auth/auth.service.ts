@@ -13,7 +13,6 @@ import { OAuthUser } from 'src/common/types/auth.type';
 import { AccountService } from '../account/account.service';
 import { VerificationService } from '../email/verification/verification.service';
 import { UserService } from '../user/user.service';
-import { LoginDto, SignupDto } from './dto/auth.dto';
 import { UserSessionService } from './sessions/user-sessions.service';
 
 @Injectable()
@@ -27,18 +26,21 @@ export class AuthService {
 		private readonly verificationService: VerificationService,
 	) {}
 
-	async register(dto: SignupDto) {
-		const existing = await this.userService.findByEmail(dto.email);
+	async register(fullName: string, username: string, email: string, password: string) {
+		const existing = await this.userService.findByEmail(email);
 		if (existing) throw new ConflictException('User with this email already exists');
 
-		return this.verificationService.sendVerificationCode(dto);
+		const existingUsername = await this.userService.findByUsername(username);
+		if (existingUsername) throw new ConflictException('User with this username already exists');
+
+		return this.verificationService.sendVerificationCode(fullName, username, email, password);
 	}
 
-	async login(dto: LoginDto, req: Request) {
-		const user = await this.userService.findByEmail(dto.email);
+	async login(identifier: string, password: string, req: Request) {
+		const user = await this.userService.findByidentifier(identifier);
 		if (!user || !user.password) throw new BadRequestException('Invalid credentials');
 
-		const isMatch = await compare(dto.password, user.password);
+		const isMatch = await compare(password, user.password);
 		if (!isMatch) throw new BadRequestException('Invalid credentials');
 
 		const userAgent = req.headers['user-agent'] || '';
@@ -47,16 +49,21 @@ export class AuthService {
 	}
 
 	async oauthLogin(profile: OAuthUser, ip: string, userAgent?: string) {
-		const { provider, providerId, email, firstName, lastName, avatarUrl } = profile;
+		const { fullName, username, email, avatarUrl, provider, providerId } = profile;
 
 		let user = await this.userService.findByEmail(email);
-
 		if (!user) {
-			user = await this.userService.create(firstName, lastName, email, null, avatarUrl);
+			const uniqueUsername = await this.userService.generateUsername(username);
+			user = await this.userService.create(
+				fullName as string,
+				uniqueUsername,
+				email,
+				null,
+				avatarUrl,
+			);
 		}
 
 		const existingAccount = await this.accountService.findAccount(provider, providerId);
-
 		if (!existingAccount) {
 			await this.accountService.create({
 				provider,
@@ -66,16 +73,6 @@ export class AuthService {
 		}
 
 		return this.issueTokens(user, ip, userAgent);
-	}
-
-	async handleCallback(req: Request, res: Response) {
-		const userAgent = req.headers['user-agent'] || '';
-		const result = await this.oauthLogin(req.user as OAuthUser, req.ip as string, userAgent);
-		const clientUrl = await this.configService.get('CLIENT_URL');
-
-		await this.setAuthCookies(res, result.accessToken, result.refreshToken);
-
-		return res.redirect(`${clientUrl}/callback`);
 	}
 
 	async logout(req: Request, res: Response) {
@@ -173,5 +170,15 @@ export class AuthService {
 
 		res.cookie('accessToken', '', expiredOptions);
 		res.cookie('refreshToken', '', expiredOptions);
+	}
+
+	async handleCallback(req: Request, res: Response) {
+		const userAgent = req.headers['user-agent'] || '';
+		const result = await this.oauthLogin(req.user as OAuthUser, req.ip as string, userAgent);
+		const clientUrl = await this.configService.get('CLIENT_URL');
+
+		await this.setAuthCookies(res, result.accessToken, result.refreshToken);
+
+		return res.redirect(`${clientUrl}/callback`);
 	}
 }
