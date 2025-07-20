@@ -13,6 +13,7 @@ import { OAuthUser } from 'src/common/types/auth.type';
 import { AccountService } from '../account/account.service';
 import { VerificationService } from '../email/verification/verification.service';
 import { UserService } from '../user/user.service';
+import { LoginDto, SignupDto } from './dto/auth.dto';
 import { UserSessionService } from './sessions/user-sessions.service';
 
 @Injectable()
@@ -26,21 +27,26 @@ export class AuthService {
 		private readonly verificationService: VerificationService,
 	) {}
 
-	async register(fullName: string, username: string, email: string, password: string) {
-		const existing = await this.userService.findByEmail(email);
+	async register(dto: SignupDto) {
+		const existing = await this.userService.findByEmail(dto.email);
 		if (existing) throw new ConflictException('User with this email already exists');
 
-		const existingUsername = await this.userService.findByUsername(username);
+		const existingUsername = await this.userService.findByUsername(dto.username);
 		if (existingUsername) throw new ConflictException('User with this username already exists');
 
-		return this.verificationService.sendVerificationCode(fullName, username, email, password);
+		return this.verificationService.sendVerificationCode(
+			dto.fullName,
+			dto.username,
+			dto.email,
+			dto.password,
+		);
 	}
 
-	async login(identifier: string, password: string, req: Request) {
-		const user = await this.userService.findByidentifier(identifier);
+	async login(dto: LoginDto, req: Request) {
+		const user = await this.userService.findByidentifier(dto.identifier);
 		if (!user || !user.password) throw new BadRequestException('Invalid credentials');
 
-		const isMatch = await compare(password, user.password);
+		const isMatch = await compare(dto.password, user.password);
 		if (!isMatch) throw new BadRequestException('Invalid credentials');
 
 		const userAgent = req.headers['user-agent'] || '';
@@ -73,6 +79,17 @@ export class AuthService {
 		}
 
 		return this.issueTokens(user, ip, userAgent);
+	}
+
+	async getAuthUser(userId: string) {
+		return this.userService.findById(userId, {
+			id: true,
+			fullName: true,
+			username: true,
+			email: true,
+			avatarUrl: true,
+			isActive: true,
+		});
 	}
 
 	async logout(req: Request, res: Response) {

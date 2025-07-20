@@ -4,6 +4,7 @@ import {
 	Injectable,
 	NotFoundException,
 } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { compare, genSalt, hash } from 'bcrypt';
 import { CloudinaryService } from 'src/common/libs/cloudinary/cloudinary.service';
 import { PrismaService } from 'src/common/prisma/prisma.service';
@@ -14,35 +15,6 @@ export class UserService {
 		private readonly prisma: PrismaService,
 		private readonly cloudinary: CloudinaryService,
 	) {}
-
-	findById(id: string) {
-		return this.prisma.user.findUnique({ where: { id } });
-	}
-
-	findByEmail(email: string) {
-		return this.prisma.user.findUnique({ where: { email } });
-	}
-
-	findByUsername(username: string) {
-		return this.prisma.user.findUnique({ where: { username } });
-	}
-
-	findByidentifier(identifier: string) {
-		return this.prisma.user.findFirst({
-			where: { OR: [{ username: identifier }, { email: identifier }] },
-		});
-	}
-
-	async generateUsername(base: string): Promise<string> {
-		let username = base.trim().toLowerCase();
-		let i = 1;
-
-		while (await this.findByUsername(username)) {
-			username = `${base}${i++}`.toLowerCase();
-		}
-
-		return username;
-	}
 
 	async create(
 		fullName: string,
@@ -65,6 +37,41 @@ export class UserService {
 				email: email.trim().toLowerCase(),
 				password: pwd,
 				avatarUrl: avatarUrl || null,
+			},
+		});
+	}
+
+	async findById<T extends Prisma.UserSelect>(id: string, select?: T) {
+		return this.prisma.user.findUnique({
+			where: { id },
+			select,
+		});
+	}
+
+	async findByEmail(email: string) {
+		return this.prisma.user.findUnique({ where: { email } });
+	}
+
+	async findByUsername(username: string) {
+		return this.prisma.user.findUnique({ where: { username } });
+	}
+
+	async findByidentifier(identifier: string) {
+		return this.prisma.user.findFirst({
+			where: { OR: [{ username: identifier }, { email: identifier }] },
+		});
+	}
+
+	async getAuthUser(id: string) {
+		return this.prisma.user.findUnique({
+			where: { id },
+			select: {
+				id: true,
+				fullName: true,
+				username: true,
+				email: true,
+				avatarUrl: true,
+				isActive: true,
 			},
 		});
 	}
@@ -145,5 +152,16 @@ export class UserService {
 		});
 
 		return true;
+	}
+
+	async generateUsername(base: string): Promise<string> {
+		let username = base.trim().toLowerCase();
+		let i = 1;
+
+		while (await this.findByUsername(username)) {
+			username = `${base}${i++}`.toLowerCase();
+		}
+
+		return username;
 	}
 }

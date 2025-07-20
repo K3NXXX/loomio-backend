@@ -12,6 +12,8 @@ import { getSecondsRemaining } from 'src/common/utils/seconds-remaining.util';
 import { SignupMeta } from 'src/modules/auth/dto/auth.dto';
 import { UserService } from 'src/modules/user/user.service';
 import { PrismaService } from '../../../common/prisma/prisma.service';
+import { ResendCodeDto } from './dto/resend-code.dto';
+import { VerifyCodeDto } from './dto/verify-code.dto';
 
 @Injectable()
 export class VerificationService {
@@ -71,11 +73,11 @@ export class VerificationService {
 		return throttleExpiresAt;
 	}
 
-	async resendVerificationCode(email: string) {
+	async resendVerificationCode(dto: ResendCodeDto) {
 		const token = await this.prisma.token.findUnique({
 			where: {
 				email_type: {
-					email,
+					email: dto.email,
 					type: TokenType.VERIFICATION,
 				},
 			},
@@ -105,13 +107,13 @@ export class VerificationService {
 			},
 		});
 
-		await this.mailService.sendVerificationCode(email, code);
+		await this.mailService.sendVerificationCode(dto.email, code);
 
 		return throttleExpiresAt;
 	}
 
-	async verifyCode(code: string) {
-		const hashedCode = hashSecret(code);
+	async verifyCode(dto: VerifyCodeDto) {
+		const hashedCode = hashSecret(dto.code);
 		const token = await this.prisma.token.findUnique({
 			where: {
 				code_type: {
