@@ -8,14 +8,12 @@ export class PasswordResetDto {
 
 	@IsString()
 	@IsNotEmpty()
-	@MinLength(8, { message: 'Password must be at least 8 characters' })
+	@MinLength(8)
 	password: string;
 
 	@IsString()
 	@IsNotEmpty()
-	@MinLength(8, {
-		message: 'The password for confirmation must be at least 8 characters',
-	})
+	@MinLength(8)
 	@Validate(IsPasswordsMatch)
 	confirmPassword: string;
 }

@@ -9,11 +9,9 @@ import { hash } from 'bcrypt';
 import { MailService } from 'src/common/libs/mail/mail.service';
 import { generateCode, hashSecret } from 'src/common/utils/generate-code.util';
 import { getSecondsRemaining } from 'src/common/utils/seconds-remaining.util';
-import { SignupDto, SignupMeta } from 'src/modules/auth/dto/auth.dto';
+import { SignupMeta } from 'src/modules/auth/dto/auth.dto';
 import { UserService } from 'src/modules/user/user.service';
 import { PrismaService } from '../../../common/prisma/prisma.service';
-import { ResendCodeDto } from './dto/resend-code.dto';
-import { VerifyCodeDto } from './dto/verify-code.dto';
 
 @Injectable()
 export class VerificationService {
@@ -23,11 +21,11 @@ export class VerificationService {
 		private readonly userService: UserService,
 	) {}
 
-	async sendVerificationCode(dto: SignupDto) {
+	async sendVerificationCode(fullName: string, username: string, email: string, password: string) {
 		const token = await this.prisma.token.findUnique({
 			where: {
 				email_type: {
-					email: dto.email,
+					email,
 					type: TokenType.VERIFICATION,
 				},
 			},
@@ -45,22 +43,22 @@ export class VerificationService {
 			await this.prisma.token.delete({ where: { id: token.id } });
 		}
 
-		const hashedPassword = await hash(dto.password, 10);
+		const hashedPassword = await hash(password, 10);
 		const code = generateCode();
 		const hashedCode = hashSecret(code);
 		const tokenExpiresAt = new Date(Date.now() + 10 * 60 * 1000);
 		const throttleExpiresAt = new Date(Date.now() + 60 * 1000);
 
 		const meta: SignupMeta = {
-			firstName: dto.firstName,
-			lastName: dto.lastName,
-			email: dto.email,
+			fullName,
+			username,
+			email,
 			password: hashedPassword,
 		};
 
 		await this.prisma.token.create({
 			data: {
-				email: dto.email,
+				email,
 				code: hashedCode,
 				expiresAt: tokenExpiresAt,
 				type: TokenType.VERIFICATION,
@@ -68,16 +66,16 @@ export class VerificationService {
 			},
 		});
 
-		await this.mailService.sendVerificationCode(dto.email, code);
+		await this.mailService.sendVerificationCode(email, code);
 
 		return throttleExpiresAt;
 	}
 
-	async resendVerificationCode(dto: ResendCodeDto) {
+	async resendVerificationCode(email: string) {
 		const token = await this.prisma.token.findUnique({
 			where: {
 				email_type: {
-					email: dto.email,
+					email,
 					type: TokenType.VERIFICATION,
 				},
 			},
@@ -107,13 +105,13 @@ export class VerificationService {
 			},
 		});
 
-		await this.mailService.sendVerificationCode(dto.email, code);
+		await this.mailService.sendVerificationCode(email, code);
 
 		return throttleExpiresAt;
 	}
 
-	async verifyCode(dto: VerifyCodeDto) {
-		const hashedCode = hashSecret(dto.code);
+	async verifyCode(code: string) {
+		const hashedCode = hashSecret(code);
 		const token = await this.prisma.token.findUnique({
 			where: {
 				code_type: {
@@ -137,8 +135,8 @@ export class VerificationService {
 
 		const user = await this.prisma.user.create({
 			data: {
-				firstName: meta.firstName,
-				lastName: meta.lastName,
+				fullName: meta.fullName,
+				username: meta.username,
 				email: meta.email,
 				password: meta.password,
 			},

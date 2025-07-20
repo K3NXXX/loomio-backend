@@ -15,27 +15,42 @@ export class UserService {
 		private readonly cloudinary: CloudinaryService,
 	) {}
 
-	async findById(id: string) {
+	findById(id: string) {
 		return this.prisma.user.findUnique({ where: { id } });
 	}
 
-	async findByEmail(email: string) {
+	findByEmail(email: string) {
 		return this.prisma.user.findUnique({ where: { email } });
 	}
 
+	findByUsername(username: string) {
+		return this.prisma.user.findUnique({ where: { username } });
+	}
+
+	findByidentifier(identifier: string) {
+		return this.prisma.user.findFirst({
+			where: { OR: [{ username: identifier }, { email: identifier }] },
+		});
+	}
+
+	async generateUsername(base: string): Promise<string> {
+		let username = base.trim().toLowerCase();
+		let i = 1;
+
+		while (await this.findByUsername(username)) {
+			username = `${base}${i++}`.toLowerCase();
+		}
+
+		return username;
+	}
+
 	async create(
-		firstName: string | null,
-		lastName: string | null,
+		fullName: string,
+		username: string,
 		email: string,
 		password: string | null,
 		avatarUrl?: string | null,
 	) {
-		const existingUser = await this.prisma.user.findUnique({
-			where: { email },
-		});
-
-		if (existingUser) throw new ConflictException(`User with email ${email} already exists`);
-
 		let pwd: string | null = null;
 
 		if (password) {
@@ -45,8 +60,8 @@ export class UserService {
 
 		return this.prisma.user.create({
 			data: {
-				firstName: firstName?.trim(),
-				lastName: lastName?.trim(),
+				fullName: fullName?.trim(),
+				username: username?.trim().toLowerCase(),
 				email: email.trim().toLowerCase(),
 				password: pwd,
 				avatarUrl: avatarUrl || null,
@@ -55,18 +70,15 @@ export class UserService {
 	}
 
 	async updatePassword(id: string, password: string) {
-		if (!password) {
-			throw new ConflictException('Password is required');
-		}
+		if (!password) throw new ConflictException('Password is required');
 
 		const user = await this.findById(id);
 		if (!user) throw new NotFoundException('User not found');
 
 		if (user.password) {
 			const isSamePassword = await compare(password, user.password);
-			if (isSamePassword) {
+			if (isSamePassword)
 				throw new ConflictException('The new password must be different from the current password');
-			}
 		}
 
 		const salt = await genSalt(10);
@@ -77,6 +89,7 @@ export class UserService {
 			data: { password: hashedPassword },
 		});
 	}
+
 	async uploadAvatar(userId: string, file: Express.Multer.File): Promise<{ photo: string }> {
 		if (!file) throw new BadRequestException('File is required');
 
