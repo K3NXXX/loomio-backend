@@ -139,10 +139,10 @@ export class AuthService {
 
 		const commonOptions: CookieOptions = {
 			httpOnly: true,
-			secure: isProduction,
-			sameSite: isProduction ? 'none' : 'lax',
+			secure: !isProduction,
+			sameSite: !isProduction ? 'none' : 'lax',
 			path: '/',
-			partitioned: isProduction,
+			partitioned: !isProduction,
 		};
 
 		res.cookie('accessToken', accessToken, {
@@ -161,10 +161,10 @@ export class AuthService {
 
 		const expiredOptions: CookieOptions = {
 			httpOnly: true,
-			secure: isProduction,
-			sameSite: isProduction ? 'none' : 'lax',
+			secure: !isProduction,
+			sameSite: !isProduction ? 'none' : 'lax',
 			path: '/',
-			partitioned: isProduction,
+			partitioned: !isProduction,
 			expires: new Date(0),
 		};
 
