@@ -10,6 +10,8 @@ import { generateCode, hashSecret } from 'src/common/utils/generate-code.util';
 import { getSecondsRemaining } from 'src/common/utils/seconds-remaining.util';
 import { UserService } from 'src/modules/user/user.service';
 import { PrismaService } from '../../../common/prisma/prisma.service';
+import { PasswordResetDto } from './dto/password-reset.dto';
+import { RequestResetDto } from './dto/request-reset.dto';
 
 @Injectable()
 export class PasswordResetService {
@@ -19,14 +21,14 @@ export class PasswordResetService {
 		private readonly userService: UserService,
 	) {}
 
-	async sendPasswordResetToken(email: string) {
-		const user = await this.userService.findByEmail(email);
+	async sendPasswordResetToken(dto: RequestResetDto) {
+		const user = await this.userService.findByEmail(dto.email);
 		if (!user) return false;
 
 		const token = await this.prisma.token.findUnique({
 			where: {
 				email_type: {
-					email,
+					email: dto.email,
 					type: TokenType.PASSWORD_RESET,
 				},
 			},
@@ -51,19 +53,19 @@ export class PasswordResetService {
 
 		await this.prisma.token.create({
 			data: {
-				email,
+				email: dto.email,
 				code: hashedToken,
 				expiresAt: tokenExpiresAt,
 				type: TokenType.PASSWORD_RESET,
 			},
 		});
 
-		await this.mailService.sendPasswordResetToken(email, rawToken);
+		await this.mailService.sendPasswordResetToken(dto.email, rawToken);
 		return { expiresAt: throttleExpiresAt };
 	}
 
-	async resetPassword(token: string, newPassword: string) {
-		const hashedToken = hashSecret(token);
+	async resetPassword(dto: PasswordResetDto) {
+		const hashedToken = hashSecret(dto.token);
 
 		const record = await this.prisma.token.findUnique({
 			where: {
@@ -84,7 +86,7 @@ export class PasswordResetService {
 		const user = await this.userService.findByEmail(record.email);
 		if (!user) throw new NotFoundException('User not found');
 
-		await this.userService.updatePassword(user.id, newPassword);
+		await this.userService.updatePassword(user.id, dto.password);
 		await this.prisma.token.delete({ where: { id: record.id } });
 
 		return { message: 'Password has been reset successfully' };

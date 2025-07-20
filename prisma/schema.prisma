@@ -25,9 +25,6 @@ model User {
   accounts Account[]
   sessions UserSession[]
 
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
-
   projects       Project[]
   projectMembers ProjectMember[]
   tasks          Task[]
@@ -36,6 +33,9 @@ model User {
   notifications  Notification[]
   comments       Comment[]
   files          FileAttachment[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   @@index([email])
   @@index([role])
