@@ -10,9 +10,11 @@ export class ProjectService {
 
 	async create(ownerId: string, dto: CreateProjectDto) {
 		return this.prisma.$transaction(async tx => {
+			const { members, ...projectData } = dto;
+
 			const project = await tx.project.create({
 				data: {
-					...dto,
+					...projectData,
 					ownerId,
 				},
 			});
@@ -20,9 +22,6 @@ export class ProjectService {
 			await tx.projectSettings.create({
 				data: {
 					projectId: project.id,
-					defaultView: 'list',
-					notificationsOn: true,
-					archivedVisible: false,
 				},
 			});
 
@@ -33,6 +32,21 @@ export class ProjectService {
 					role: MemberRole.OWNER,
 				},
 			});
+
+			if (members?.length) {
+				const filteredMembers = members.filter(member => member.userId !== ownerId);
+
+				if (filteredMembers.length) {
+					await tx.projectMember.createMany({
+						data: filteredMembers.map(member => ({
+							projectId: project.id,
+							userId: member.userId,
+							role: member.role,
+						})),
+						skipDuplicates: true,
+					});
+				}
+			}
 
 			return project;
 		});
@@ -72,9 +86,11 @@ export class ProjectService {
 		if (!project || project.ownerId !== userId)
 			throw new NotFoundException('Project not found or access denied');
 
+		const { members, ...projectData } = dto;
+
 		return this.prisma.project.update({
 			where: { id },
-			data: dto,
+			data: projectData,
 		});
 	}
 
