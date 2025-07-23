@@ -5,7 +5,7 @@ import {
 	GitHubAuthorization,
 	GoogleAuthorization,
 } from 'src/common/decorators/auth.decorators';
-import { RateLimit } from 'src/common/decorators/rate-limit.decorator';
+import { CurrentUser } from 'src/common/decorators/user.decorator';
 import { PasswordResetDto } from '../email/password-reset/dto/password-reset.dto';
 import { RequestResetDto } from '../email/password-reset/dto/request-reset.dto';
 import { PasswordResetService } from '../email/password-reset/password-reset.service';
@@ -15,7 +15,6 @@ import { VerificationService } from '../email/verification/verification.service'
 import { AuthService } from './auth.service';
 import { LoginDto, SignupDto } from './dto/auth.dto';
 
-@RateLimit()
 @Controller('auth')
 export class AuthController {
 	constructor(
@@ -26,12 +25,7 @@ export class AuthController {
 
 	@Post('register')
 	async register(@Body() dto: SignupDto) {
-		const response = await this.authService.register(
-			dto.fullName,
-			dto.username,
-			dto.email,
-			dto.password,
-		);
+		const response = await this.authService.register(dto);
 		return { message: 'Verification code sent to your email', expiresAt: response };
 	}
 
@@ -42,7 +36,7 @@ export class AuthController {
 		@Res({ passthrough: true }) res: Response,
 	) {
 		const userAgent = req.headers['user-agent'] || '';
-		const user = await this.verificationService.verifyCode(dto.code);
+		const user = await this.verificationService.verifyCode(dto);
 		const { accessToken, refreshToken } = await this.authService.issueTokens(
 			user,
 			req.ip as string,
@@ -61,7 +55,7 @@ export class AuthController {
 
 	@Post('register/resend')
 	async resendCode(@Body() dto: ResendCodeDto) {
-		const response = await this.verificationService.resendVerificationCode(dto.email);
+		const response = await this.verificationService.resendVerificationCode(dto);
 		return { message: 'New verification code sent', expiresAt: response };
 	}
 
@@ -71,24 +65,26 @@ export class AuthController {
 		@Req() req: Request,
 		@Res({ passthrough: true }) res: Response,
 	) {
-		const { accessToken, refreshToken, user } = await this.authService.login(
-			dto.identifier,
-			dto.password,
-			req,
-		);
+		const { accessToken, refreshToken, user } = await this.authService.login(dto, req);
 		await this.authService.setAuthCookies(res, accessToken, refreshToken);
 
 		return { user };
 	}
 
+	@Authorization()
+	@Get('me')
+	async getAuthUser(@CurrentUser('id') userId: string) {
+		return this.authService.getAuthUser(userId);
+	}
+
 	@Post('password-reset/request')
 	async sendResetToken(@Body() dto: RequestResetDto) {
-		return this.passwordResetService.sendPasswordResetToken(dto.email);
+		return this.passwordResetService.sendPasswordResetToken(dto);
 	}
 
 	@Post('password-reset/confirm')
 	async resetPassword(@Body() dto: PasswordResetDto) {
-		return await this.passwordResetService.resetPassword(dto.token, dto.password);
+		return await this.passwordResetService.resetPassword(dto);
 	}
 
 	@Authorization()
