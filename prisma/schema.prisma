@@ -25,14 +25,15 @@ model User {
   accounts Account[]
   sessions UserSession[]
 
-  projects       Project[]
-  projectMembers ProjectMember[]
-  tasks          Task[]
-  projectInvites ProjectInvite[]
-  activities     ActivityLog[]
-  notifications  Notification[]
-  comments       Comment[]
-  files          FileAttachment[]
+  projects        Project[]
+  projectMembers  ProjectMember[]
+  tasks           Task[]
+  invitesSent     ProjectInvite[]  @relation("InvitedBy")
+  invitesReceived ProjectInvite[]  @relation("InvitedUser")
+  activities      ActivityLog[]
+  notifications   Notification[]
+  comments        Comment[]
+  files           FileAttachment[]
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -126,7 +127,7 @@ model ProjectSettings {
   integrationJson Json?
 
   projectId String  @unique
-  project   Project @relation(fields: [projectId], references: [id])
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@map("project_settings")
 }
@@ -150,25 +151,26 @@ model ProjectMember {
 }
 
 model ProjectInvite {
-  id    String     @id @default(uuid())
-  email String     @db.VarChar(255)
-  role  MemberRole @default(MEMBER)
+  id          String  @id @default(uuid())
+  projectId   String  @map("project_id")
+  email       String? @db.VarChar(255)
+  userId      String?
+  invitedById String  @map("invited_by_id")
 
-  token      String    @unique
-  expiresAt  DateTime  @map("expires_at")
+  role       MemberRole   @default(VIEWER)
+  token      String       @unique
+  expiresAt  DateTime     @map("expires_at")
   acceptedAt DateTime?
+  status     InviteStatus @default(PENDING)
 
-  status InviteStatus @default(PENDING)
-
-  projectId String  @map("project_id")
   project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
-
-  invitedById String @map("invited_by_id")
-  invitedBy   User   @relation(fields: [invitedById], references: [id])
+  invitedBy User    @relation("InvitedBy", fields: [invitedById], references: [id])
+  user      User?   @relation("InvitedUser", fields: [userId], references: [id])
 
   createdAt DateTime @default(now()) @map("created_at")
 
   @@unique([email, projectId])
+  @@unique([userId, projectId])
   @@index([projectId])
   @@map("project_invites")
 }

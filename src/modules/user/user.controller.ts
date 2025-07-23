@@ -1,27 +1,33 @@
 import {
 	BadRequestException,
+	Body,
 	Controller,
 	Delete,
 	Get,
 	Param,
 	Patch,
+	Post,
 	UploadedFile,
 	UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { User } from '@prisma/client';
 import { Authorization } from 'src/common/decorators/auth.decorators';
 import { CurrentUser } from 'src/common/decorators/user.decorator';
 import { UserSessionService } from '../auth/sessions/user-sessions.service';
+import { AcceptInviteDto } from '../project/invites/dto/accept-ivite.dto';
+import { InviteService } from '../project/invites/invite.service';
 import { UserService } from './user.service';
 
+@Authorization()
 @Controller('user')
 export class UserController {
 	constructor(
 		private readonly userService: UserService,
 		private readonly userSessionService: UserSessionService,
+		private readonly inviteService: InviteService,
 	) {}
 
-	@Authorization()
 	@Patch('update/avatar')
 	@UseInterceptors(
 		FileInterceptor('file', {
@@ -40,20 +46,27 @@ export class UserController {
 		return this.userService.uploadAvatar(userId, file);
 	}
 
-	@Authorization()
 	@Delete('delete/avatar')
 	async deleteAvatar(@CurrentUser('id') userId: string) {
 		return this.userService.deleteAvatar(userId);
 	}
 
-	@Authorization()
 	@Get('sessions')
 	async getSessions(@CurrentUser('id') userId: string) {
 		const sessions = await this.userSessionService.findUserSessions(userId);
 		return { sessions };
 	}
 
-	@Authorization()
+	@Get('invites')
+	async getMyInvites(@CurrentUser() user: User) {
+		return this.inviteService.findUserInvites(user.id, user.email);
+	}
+
+	@Post('invites/accept')
+	async acceptInvite(@CurrentUser('id') userId: string, @Body() dto: AcceptInviteDto) {
+		return this.inviteService.acceptInvite(userId, dto);
+	}
+
 	@Delete('sessions/:id')
 	async deleteSession(@CurrentUser('id') userId: string, @Param('id') id: string) {
 		await this.userSessionService.deleteSession(userId, id);

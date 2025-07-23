@@ -42,9 +42,9 @@ export class MembersController {
 	@Delete(':memberId')
 	remove(
 		@Param('projectId') projectId: string,
+		@CurrentUser('id') requesterId: string,
 		@Param('memberId') memberId: string,
-		@CurrentUser('id') userId: string,
 	) {
-		return this.service.removeMember(projectId, memberId, userId);
+		return this.service.removeMember(projectId, requesterId, memberId);
 	}
 }

@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
 import { PrismaModule } from 'src/common/prisma/prisma.module';
-import { InvitesController } from './invites/invites.controller';
-import { InvitesService } from './invites/invites.service';
+import { InvitesController } from './invites/invite.controller';
+import { InviteService } from './invites/invite.service';
 import { MembersController } from './members/members.controller';
 import { MembersService } from './members/members.service';
 import { ProjectController } from './project.controller';
@@ -20,7 +20,7 @@ import { TagsService } from './tags/tags.service';
 		SettingsController,
 		TagsController,
 	],
-	providers: [ProjectService, MembersService, InvitesService, SettingsService, TagsService],
-	exports: [ProjectService],
+	providers: [ProjectService, MembersService, InviteService, SettingsService, TagsService],
+	exports: [ProjectService, MembersService, InviteService, SettingsService, TagsService],
 })
 export class ProjectModule {}
