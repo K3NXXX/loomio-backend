@@ -1,6 +1,5 @@
 import {
 	BadRequestException,
-	Body,
 	Controller,
 	Delete,
 	Get,
@@ -15,7 +14,6 @@ import { User } from '@prisma/client';
 import { Authorization } from 'src/common/decorators/auth.decorators';
 import { CurrentUser } from 'src/common/decorators/user.decorator';
 import { UserSessionService } from '../auth/sessions/user-sessions.service';
-import { AcceptInviteDto } from '../project/invites/dto/accept-ivite.dto';
 import { InviteService } from '../project/invites/invite.service';
 import { UserService } from './user.service';
 
@@ -62,9 +60,14 @@ export class UserController {
 		return this.inviteService.findUserInvites(user.id, user.email);
 	}
 
-	@Post('invites/accept')
-	async acceptInvite(@CurrentUser('id') userId: string, @Body() dto: AcceptInviteDto) {
-		return this.inviteService.acceptInvite(userId, dto);
+	@Post('invites/:inviteToken/accept')
+	async acceptInvite(@CurrentUser('id') userId: string, @Param('inviteToken') token: string) {
+		return this.inviteService.acceptInvite(userId, token);
+	}
+
+	@Patch('invites/:inviteId/decline')
+	async declineInvite(@CurrentUser('id') userId: string, @Param('inviteId') inviteId: string) {
+		return this.inviteService.declineInvite(userId, inviteId);
 	}
 
 	@Delete('sessions/:id')

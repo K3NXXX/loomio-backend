@@ -7,10 +7,10 @@ import {
 } from '@nestjs/common';
 import { InviteStatus } from '@prisma/client';
 import { PrismaService } from 'src/common/prisma/prisma.service';
-import { MembersService } from '../members/members.service';
-import { ProjectService } from '../project.service';
-import { CancelInviteDto } from './dto/cancel-ivite.dto';
-import { InviteDto } from './dto/invite.dto';
+import { MembersService } from '../../members/members.service';
+import { ProjectService } from '../../project.service';
+import { CancelInviteDto } from './cancel-ivite.dto';
+import { InviteDto } from './invite.dto';
 
 @Injectable()
 export class InviteService {
@@ -50,7 +50,7 @@ export class InviteService {
 					select: {
 						id: true,
 						name: true,
-						description: true,
+						color: true,
 					},
 				},
 				invitedBy: {
@@ -92,42 +92,6 @@ export class InviteService {
 				expiresAt,
 				projectId,
 				invitedById,
-			},
-			include: {
-				user: {
-					select: {
-						id: true,
-						fullName: true,
-						username: true,
-						email: true,
-						avatarUrl: true,
-						isActive: true,
-					},
-				},
-			},
-		});
-	}
-
-	async resendInvite(inviteId: string, userId: string) {
-		const invite = await this.prisma.projectInvite.findUnique({
-			where: { id: inviteId },
-			include: {
-				project: { select: { ownerId: true } },
-			},
-		});
-
-		if (!invite) throw new NotFoundException('Invite not found');
-		if (invite.status !== InviteStatus.PENDING)
-			throw new ConflictException('Cannot resend a non-pending invite');
-
-		const newToken = crypto.randomUUID();
-		const newExpiresAt = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000);
-
-		return this.prisma.projectInvite.update({
-			where: { id: inviteId },
-			data: {
-				token: newToken,
-				expiresAt: newExpiresAt,
 			},
 			include: {
 				user: {
