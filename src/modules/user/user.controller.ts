@@ -13,7 +13,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { User } from '@prisma/client';
 import { Authorization } from 'src/common/decorators/auth.decorators';
 import { CurrentUser } from 'src/common/decorators/user.decorator';
-import { UserSessionService } from '../auth/sessions/user-sessions.service';
+import { SessionService } from '../auth/sessions/sessions.service';
 import { InviteService } from '../project/invites/invite.service';
 import { UserService } from './user.service';
 
@@ -22,9 +22,41 @@ import { UserService } from './user.service';
 export class UserController {
 	constructor(
 		private readonly userService: UserService,
-		private readonly userSessionService: UserSessionService,
+		private readonly sessionService: SessionService,
 		private readonly inviteService: InviteService,
 	) {}
+
+	@Get()
+	async getUser(@CurrentUser('id') userId: string) {
+		return this.userService.getAuthUser(userId);
+	}
+
+	@Get('sessions')
+	async getSessions(@CurrentUser('id') userId: string) {
+		const sessions = await this.sessionService.findUserSessions(userId);
+		return { sessions };
+	}
+
+	@Get('invites')
+	async getMyInvites(@CurrentUser() user: User) {
+		return this.inviteService.findUserInvites(user.id, user.email);
+	}
+
+	@Post('invites/:inviteToken/accept')
+	async acceptInvite(@CurrentUser('id') userId: string, @Param('inviteToken') token: string) {
+		return this.inviteService.acceptInvite(userId, token);
+	}
+
+	@Patch('invites/:inviteId/decline')
+	async declineInvite(@CurrentUser('id') userId: string, @Param('inviteId') inviteId: string) {
+		return this.inviteService.declineInvite(userId, inviteId);
+	}
+
+	@Delete('sessions/:id')
+	async deleteSession(@CurrentUser('id') userId: string, @Param('id') id: string) {
+		await this.sessionService.deleteSession(userId, id);
+		return { message: 'Session deleted' };
+	}
 
 	@Patch('update/avatar')
 	@UseInterceptors(
@@ -47,32 +79,5 @@ export class UserController {
 	@Delete('delete/avatar')
 	async deleteAvatar(@CurrentUser('id') userId: string) {
 		return this.userService.deleteAvatar(userId);
-	}
-
-	@Get('sessions')
-	async getSessions(@CurrentUser('id') userId: string) {
-		const sessions = await this.userSessionService.findUserSessions(userId);
-		return { sessions };
-	}
-
-	@Get('invites')
-	async getMyInvites(@CurrentUser() user: User) {
-		return this.inviteService.findUserInvites(user.id, user.email);
-	}
-
-	@Post('invites/:inviteToken/accept')
-	async acceptInvite(@CurrentUser('id') userId: string, @Param('inviteToken') token: string) {
-		return this.inviteService.acceptInvite(userId, token);
-	}
-
-	@Patch('invites/:inviteId/decline')
-	async declineInvite(@CurrentUser('id') userId: string, @Param('inviteId') inviteId: string) {
-		return this.inviteService.declineInvite(userId, inviteId);
-	}
-
-	@Delete('sessions/:id')
-	async deleteSession(@CurrentUser('id') userId: string, @Param('id') id: string) {
-		await this.userSessionService.deleteSession(userId, id);
-		return { message: 'Session deleted' };
 	}
 }

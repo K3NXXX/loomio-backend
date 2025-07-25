@@ -1,6 +1,6 @@
 import { IsDate, IsNotEmpty, IsOptional, IsString } from 'class-validator';
 
-export class UserSessionDto {
+export class SessionDto {
 	@IsString()
 	@IsNotEmpty()
 	userId: string;

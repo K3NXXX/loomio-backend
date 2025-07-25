@@ -5,7 +5,6 @@ import {
 	GitHubAuthorization,
 	GoogleAuthorization,
 } from 'src/common/decorators/auth.decorators';
-import { CurrentUser } from 'src/common/decorators/user.decorator';
 import { PasswordResetDto } from '../email/password-reset/dto/password-reset.dto';
 import { RequestResetDto } from '../email/password-reset/dto/request-reset.dto';
 import { PasswordResetService } from '../email/password-reset/password-reset.service';
@@ -13,7 +12,9 @@ import { ResendCodeDto } from '../email/verification/dto/resend-code.dto';
 import { VerifyCodeDto } from '../email/verification/dto/verify-code.dto';
 import { VerificationService } from '../email/verification/verification.service';
 import { AuthService } from './auth.service';
+import { CookieService } from './cookie.service';
 import { LoginDto, SignupDto } from './dto/auth.dto';
+import { TokenService } from './token.service';
 
 @Controller('auth')
 export class AuthController {
@@ -21,6 +22,8 @@ export class AuthController {
 		private readonly authService: AuthService,
 		private readonly verificationService: VerificationService,
 		private readonly passwordResetService: PasswordResetService,
+		private readonly tokenService: TokenService,
+		private readonly cookieService: CookieService,
 	) {}
 
 	@Post('register')
@@ -37,15 +40,14 @@ export class AuthController {
 	) {
 		const userAgent = req.headers['user-agent'] || '';
 		const user = await this.verificationService.verifyCode(dto);
-		const { accessToken, refreshToken } = await this.authService.issueTokens(
+		const { accessToken, refreshToken } = await this.tokenService.issueTokens(
 			user,
 			req.ip as string,
 			userAgent,
 		);
 
 		const { password, ...rest } = user;
-
-		await this.authService.setAuthCookies(res, accessToken, refreshToken);
+		this.cookieService.setCookies(res, accessToken, refreshToken);
 
 		return {
 			message: 'Account verified and registered successfully!',
@@ -66,15 +68,9 @@ export class AuthController {
 		@Res({ passthrough: true }) res: Response,
 	) {
 		const { accessToken, refreshToken, user } = await this.authService.login(dto, req);
-		await this.authService.setAuthCookies(res, accessToken, refreshToken);
+		this.cookieService.setCookies(res, accessToken, refreshToken);
 
 		return { user };
-	}
-
-	@Authorization()
-	@Get('me')
-	async getAuthUser(@CurrentUser('id') userId: string) {
-		return this.authService.getAuthUser(userId);
 	}
 
 	@Post('password-reset/request')
@@ -97,13 +93,9 @@ export class AuthController {
 	@Authorization()
 	@Post('refresh')
 	async refresh(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
-		const {
-			user,
-			accessToken,
-			refreshToken: newRefreshToken,
-		} = await this.authService.refresh(req);
+		const { user, accessToken, refreshToken } = await this.authService.refresh(req, res);
 
-		await this.authService.setAuthCookies(res, accessToken, newRefreshToken);
+		this.cookieService.setCookies(res, accessToken, refreshToken);
 
 		return { user };
 	}

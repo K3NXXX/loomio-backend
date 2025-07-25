@@ -22,8 +22,10 @@ model User {
   bio      String?  @db.Text
   isActive Boolean  @default(true) @map("is_active")
 
+  theme ThemeColors @default(RED)
+
   accounts Account[]
-  sessions UserSession[]
+  sessions Session[]
 
   projects        Project[]
   projectMembers  ProjectMember[]
@@ -73,7 +75,7 @@ model Token {
   @@map("tokens")
 }
 
-model UserSession {
+model Session {
   id        String    @id @default(uuid())
   token     String    @unique
   ip        String
@@ -89,7 +91,7 @@ model UserSession {
 
   @@index([userId])
   @@index([ip, userAgent, revoked, expiresAt])
-  @@map("user_sessions")
+  @@map("sessions")
 }
 
 model Project {
@@ -337,6 +339,16 @@ enum TokenType {
   TWO_FACTOR
   PASSWORD_RESET
   EMAIL_CHANGE
+}
+
+enum ThemeColors {
+  RED
+  ORANGE
+  GREEN
+  BLUE
+  YELLOW
+  VIOLET
+  WHITE
 }
 
 enum MemberRole {

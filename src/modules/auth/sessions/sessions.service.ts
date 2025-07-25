@@ -2,19 +2,19 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { compare, hashSync } from 'bcrypt';
 import { randomBytes, randomUUID } from 'crypto';
 import { PrismaService } from 'src/common/prisma/prisma.service';
-import { UserSessionDto } from './dto/user-session.dto';
+import { SessionDto } from './dto/session.dto';
 
 @Injectable()
-export class UserSessionService {
+export class SessionService {
 	constructor(private readonly prisma: PrismaService) {}
 
-	async create(dto: UserSessionDto): Promise<string> {
+	async create(dto: SessionDto): Promise<string> {
 		const id = randomUUID();
-		const secret = randomBytes(32).toString('hex');
+		const secret = randomBytes(64).toString('hex');
 		const token = hashSync(secret, 10);
 
 		await this.prisma.$transaction([
-			this.prisma.userSession.deleteMany({
+			this.prisma.session.deleteMany({
 				where: {
 					OR: [
 						{
@@ -31,7 +31,7 @@ export class UserSessionService {
 				},
 			}),
 
-			this.prisma.userSession.create({
+			this.prisma.session.create({
 				data: {
 					id,
 					userId: dto.userId,
@@ -50,9 +50,11 @@ export class UserSessionService {
 		const [id, secret] = token.split('.');
 		if (!id || !secret) return null;
 
-		const session = await this.prisma.userSession.findUnique({
+		const session = await this.prisma.session.findUnique({
 			where: { id },
-			include: { user: true },
+			include: {
+				user: true,
+			},
 		});
 
 		if (!session || session.revoked || session.expiresAt < new Date()) return null;
@@ -64,7 +66,7 @@ export class UserSessionService {
 	}
 
 	async findUserSessions(userId: string) {
-		return this.prisma.userSession.findMany({
+		return this.prisma.session.findMany({
 			where: {
 				userId,
 				revoked: false,
@@ -75,19 +77,26 @@ export class UserSessionService {
 	}
 
 	async revoke(sessionId: string) {
-		return this.prisma.userSession.update({
+		return this.prisma.session.update({
 			where: { id: sessionId },
 			data: { revoked: true, revokedAt: new Date() },
 		});
 	}
 
+	async revokeAll(userId: string) {
+		await this.prisma.session.updateMany({
+			where: { userId, revoked: false, expiresAt: { gt: new Date() } },
+			data: { revoked: true, revokedAt: new Date() },
+		});
+	}
+
 	async deleteSession(userId: string, sessionId: string) {
-		const session = await this.prisma.userSession.findUnique({ where: { id: sessionId } });
+		const session = await this.prisma.session.findUnique({ where: { id: sessionId } });
 
 		if (!session || session.userId !== userId) {
 			throw new NotFoundException('Session not found or access denied');
 		}
 
-		await this.prisma.userSession.delete({ where: { id: sessionId } });
+		await this.prisma.session.delete({ where: { id: sessionId } });
 	}
 }

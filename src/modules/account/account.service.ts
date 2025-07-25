@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { ConflictException, Injectable } from '@nestjs/common';
 import { PrismaService } from 'src/common/prisma/prisma.service';
 
 @Injectable()
@@ -15,6 +15,9 @@ export class AccountService {
 	}
 
 	async create(data: { provider: string; providerId: string; userId: string }) {
+		const exists = await this.findAccount(data.provider, data.providerId);
+		if (exists) throw new ConflictException('OAuth account already exists');
+
 		return this.prisma.account.create({ data });
 	}
 }

@@ -2,12 +2,15 @@ import {
 	BadRequestException,
 	ConflictException,
 	Injectable,
+	InternalServerErrorException,
 	NotFoundException,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { compare, genSalt, hash } from 'bcrypt';
 import { CloudinaryService } from 'src/common/libs/cloudinary/cloudinary.service';
 import { PrismaService } from 'src/common/prisma/prisma.service';
+import { SignupDto } from '../auth/dto/auth.dto';
+import { OAuthSignupDto } from '../auth/dto/oauth.dto';
 
 @Injectable()
 export class UserService {
@@ -16,27 +19,31 @@ export class UserService {
 		private readonly cloudinary: CloudinaryService,
 	) {}
 
-	async create(
-		fullName: string,
-		username: string,
-		email: string,
-		password: string | null,
-		avatarUrl?: string | null,
-	) {
-		let pwd: string | null = null;
-
-		if (password) {
-			const salt = await genSalt(10);
-			pwd = await hash(password, salt);
-		}
+	async create(dto: SignupDto) {
+		const salt = await genSalt(10);
+		const hashedPassword = await hash(dto.password, salt);
 
 		return this.prisma.user.create({
 			data: {
-				fullName: fullName?.trim(),
-				username: username?.trim().toLowerCase(),
-				email: email.trim().toLowerCase(),
-				password: pwd,
-				avatarUrl: avatarUrl || null,
+				fullName: dto.fullName.trim(),
+				username: dto.username.trim().toLowerCase(),
+				email: dto.email.trim().toLowerCase(),
+				password: hashedPassword,
+				avatarUrl: null,
+			},
+		});
+	}
+
+	async createOAuth(dto: OAuthSignupDto) {
+		const uniqueUsername = await this.generateUsername(dto.username);
+
+		return this.prisma.user.create({
+			data: {
+				fullName: dto.fullName.trim(),
+				username: uniqueUsername.trim().toLowerCase(),
+				email: dto.email.trim().toLowerCase(),
+				password: null,
+				avatarUrl: dto.avatarUrl || null,
 			},
 		});
 	}
@@ -58,7 +65,12 @@ export class UserService {
 
 	async findByidentifier(identifier: string) {
 		return this.prisma.user.findFirst({
-			where: { OR: [{ username: identifier }, { email: identifier }] },
+			where: {
+				OR: [
+					{ username: { equals: identifier.toLowerCase(), mode: 'insensitive' } },
+					{ email: { equals: identifier.toLowerCase(), mode: 'insensitive' } },
+				],
+			},
 		});
 	}
 
@@ -72,6 +84,7 @@ export class UserService {
 				email: true,
 				avatarUrl: true,
 				isActive: true,
+				theme: true,
 			},
 		});
 	}
@@ -107,7 +120,7 @@ export class UserService {
 			try {
 				await this.cloudinary.deleteFile(user.avatarPublicId);
 			} catch (error) {
-				throw new Error('Could not delete old avatar', error);
+				throw new InternalServerErrorException('Could not delete old avatar', error);
 			}
 		}
 
@@ -139,7 +152,7 @@ export class UserService {
 			try {
 				await this.cloudinary.deleteFile(user.avatarPublicId);
 			} catch (error) {
-				throw new Error('Error to delete image', error);
+				throw new InternalServerErrorException('Error to delete image', error);
 			}
 		}
 
