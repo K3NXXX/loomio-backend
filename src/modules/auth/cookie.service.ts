@@ -6,44 +6,58 @@ import { CookieOptions, Response } from 'express';
 export class CookieService {
 	constructor(private readonly configService: ConfigService) {}
 
+	private isProd() {
+		return this.configService.get<string>('NODE_ENV') === 'production';
+	}
+
+	private baseOptions(httpOnly = true): CookieOptions {
+		return {
+			httpOnly,
+			secure: this.isProd(),
+			sameSite: this.isProd() ? 'none' : 'lax',
+			path: '/',
+		};
+	}
+
 	setCookies(res: Response, accessToken: string, refreshToken: string) {
-		const isProduction = this.configService.get<string>('NODE_ENV') === 'production';
 		const refreshExpiresDays = this.configService.getOrThrow<number>('REFRESH_TOKEN_EXPIRES');
 		const accessExpiresMs = this.configService.getOrThrow<number>('ACCESS_TOKEN_EXPIRES');
 
 		if (isNaN(refreshExpiresDays) || isNaN(accessExpiresMs))
 			throw new Error('Invalid token expiration config values');
 
-		const commonOptions: CookieOptions = {
-			httpOnly: true,
-			secure: isProduction,
-			sameSite: isProduction ? 'none' : 'lax',
-			path: '/',
-		};
-
 		res.cookie('accessToken', accessToken, {
-			...commonOptions,
+			...this.baseOptions(true),
 			maxAge: accessExpiresMs,
 		});
 
 		res.cookie('refreshToken', refreshToken, {
-			...commonOptions,
+			...this.baseOptions(true),
 			expires: new Date(Date.now() + refreshExpiresDays * 24 * 60 * 60 * 1000),
 		});
 	}
 
 	clearCookies(res: Response) {
-		const isProduction = this.configService.get<string>('NODE_ENV') === 'production';
-
-		const expiredOptions: CookieOptions = {
-			httpOnly: true,
-			secure: isProduction,
-			sameSite: isProduction ? 'none' : 'lax',
-			path: '/',
+		const expired = {
+			...this.baseOptions(true),
 			expires: new Date(0),
 		};
 
-		res.cookie('accessToken', '', expiredOptions);
-		res.cookie('refreshToken', '', expiredOptions);
+		res.cookie('accessToken', '', expired);
+		res.cookie('refreshToken', '', expired);
+	}
+
+	setThemeCookie(res: Response, theme: string) {
+		res.cookie('theme', theme, {
+			...this.baseOptions(false),
+			maxAge: 1000 * 60 * 60 * 24 * 30,
+		});
+	}
+
+	clearThemeCookie(res: Response) {
+		res.cookie('theme', '', {
+			...this.baseOptions(false),
+			expires: new Date(0),
+		});
 	}
 }

@@ -11,6 +11,7 @@ import { CloudinaryService } from 'src/common/libs/cloudinary/cloudinary.service
 import { PrismaService } from 'src/common/prisma/prisma.service';
 import { SignupDto } from '../auth/dto/auth.dto';
 import { OAuthSignupDto } from '../auth/dto/oauth.dto';
+import { UpdateThemeDto } from './dto/theme.dto';
 
 @Injectable()
 export class UserService {
@@ -84,6 +85,17 @@ export class UserService {
 				email: true,
 				avatarUrl: true,
 				isActive: true,
+				theme: true,
+			},
+		});
+	}
+
+	async updateTheme(userId: string, dto: UpdateThemeDto) {
+		return this.prisma.user.update({
+			where: { id: userId },
+			data: { theme: dto.theme },
+			select: {
+				id: true,
 				theme: true,
 			},
 		});

@@ -78,7 +78,7 @@ export class SessionService {
 
 	async revoke(sessionId: string) {
 		return this.prisma.session.update({
-			where: { id: sessionId },
+			where: { id: sessionId, revokedAt: null },
 			data: { revoked: true, revokedAt: new Date() },
 		});
 	}
@@ -90,7 +90,7 @@ export class SessionService {
 		});
 	}
 
-	async deleteSession(userId: string, sessionId: string) {
+	async delete(userId: string, sessionId: string) {
 		const session = await this.prisma.session.findUnique({ where: { id: sessionId } });
 
 		if (!session || session.userId !== userId) {

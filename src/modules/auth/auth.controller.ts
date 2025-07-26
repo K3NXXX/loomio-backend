@@ -47,7 +47,9 @@ export class AuthController {
 		);
 
 		const { password, ...rest } = user;
+
 		this.cookieService.setCookies(res, accessToken, refreshToken);
+		this.cookieService.setThemeCookie(res, user.theme);
 
 		return {
 			message: 'Account verified and registered successfully!',
@@ -67,8 +69,10 @@ export class AuthController {
 		@Req() req: Request,
 		@Res({ passthrough: true }) res: Response,
 	) {
-		const { accessToken, refreshToken, user } = await this.authService.login(dto, req);
+		const { user, accessToken, refreshToken } = await this.authService.login(req, dto);
+
 		this.cookieService.setCookies(res, accessToken, refreshToken);
+		this.cookieService.setThemeCookie(res, user.theme);
 
 		return { user };
 	}
@@ -86,7 +90,11 @@ export class AuthController {
 	@Authorization()
 	@Post('logout')
 	async logout(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
-		await this.authService.logout(req, res);
+		await this.authService.logout(req);
+
+		this.cookieService.clearCookies(res);
+		this.cookieService.clearThemeCookie(res);
+
 		return { message: 'Logged out successfully' };
 	}
 

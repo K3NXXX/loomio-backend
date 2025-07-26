@@ -1,20 +1,25 @@
 import {
 	BadRequestException,
+	Body,
 	Controller,
 	Delete,
 	Get,
 	Param,
 	Patch,
 	Post,
+	Res,
 	UploadedFile,
 	UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { User } from '@prisma/client';
+import { Response } from 'express';
 import { Authorization } from 'src/common/decorators/auth.decorators';
 import { CurrentUser } from 'src/common/decorators/user.decorator';
+import { CookieService } from '../auth/cookie.service';
 import { SessionService } from '../auth/sessions/sessions.service';
 import { InviteService } from '../project/invites/invite.service';
+import { UpdateThemeDto } from './dto/theme.dto';
 import { UserService } from './user.service';
 
 @Authorization()
@@ -24,6 +29,7 @@ export class UserController {
 		private readonly userService: UserService,
 		private readonly sessionService: SessionService,
 		private readonly inviteService: InviteService,
+		private readonly cookieService: CookieService,
 	) {}
 
 	@Get()
@@ -35,6 +41,12 @@ export class UserController {
 	async getSessions(@CurrentUser('id') userId: string) {
 		const sessions = await this.sessionService.findUserSessions(userId);
 		return { sessions };
+	}
+
+	@Delete('sessions/:id')
+	async deleteSession(@CurrentUser('id') userId: string, @Param('id') id: string) {
+		await this.sessionService.delete(userId, id);
+		return { message: 'Session deleted' };
 	}
 
 	@Get('invites')
@@ -52,10 +64,17 @@ export class UserController {
 		return this.inviteService.declineInvite(userId, inviteId);
 	}
 
-	@Delete('sessions/:id')
-	async deleteSession(@CurrentUser('id') userId: string, @Param('id') id: string) {
-		await this.sessionService.deleteSession(userId, id);
-		return { message: 'Session deleted' };
+	@Patch('theme')
+	async updateTheme(
+		@CurrentUser('id') userId: string,
+		@Body() dto: UpdateThemeDto,
+		@Res() res: Response,
+	) {
+		const user = await this.userService.updateTheme(userId, dto);
+
+		this.cookieService.setThemeCookie(res, user.theme);
+
+		res.json({ message: 'Theme updated', theme: user.theme });
 	}
 
 	@Patch('update/avatar')

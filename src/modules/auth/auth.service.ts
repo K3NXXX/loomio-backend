@@ -45,7 +45,7 @@ export class AuthService {
 		);
 	}
 
-	async login(dto: LoginDto, req: Request) {
+	async login(req: Request, dto: LoginDto) {
 		const [user] = await Promise.all([this.userService.findByidentifier(dto.identifier)]);
 
 		if (!user || !user.password) throw new BadRequestException('Invalid credentials');
@@ -91,7 +91,7 @@ export class AuthService {
 		return res.redirect(`${clientUrl}/callback`);
 	}
 
-	async logout(req: Request, res: Response) {
+	async logout(req: Request) {
 		const refreshToken = req.cookies['refreshToken'];
 		if (!refreshToken) throw new UnauthorizedException('Refresh token missing');
 
@@ -99,7 +99,6 @@ export class AuthService {
 		if (!session) throw new UnauthorizedException('Invalid refresh token');
 
 		await this.sessionService.revoke(session.id);
-		this.cookieService.clearCookies(res);
 	}
 
 	async refresh(req: Request, res: Response) {
@@ -111,6 +110,8 @@ export class AuthService {
 			this.cookieService.clearCookies(res);
 			throw new UnauthorizedException('Invalid or expired session');
 		}
+
+		await this.sessionService.delete(session.userId, session.id);
 
 		const ip = req.ip || session.ip || 'unknown';
 		const userAgent = req.headers['user-agent'] || session.userAgent || 'unknown';
