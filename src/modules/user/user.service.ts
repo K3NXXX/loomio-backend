@@ -11,6 +11,7 @@ import { CloudinaryService } from 'src/common/libs/cloudinary/cloudinary.service
 import { PrismaService } from 'src/common/prisma/prisma.service';
 import { SignupDto } from '../auth/dto/auth.dto';
 import { OAuthSignupDto } from '../auth/dto/oauth.dto';
+import { SearchUsersDto } from './dto/search-users.dto';
 import { UpdateThemeDto } from './dto/theme.dto';
 
 @Injectable()
@@ -20,32 +21,30 @@ export class UserService {
 		private readonly cloudinary: CloudinaryService,
 	) {}
 
-	async create(dto: SignupDto) {
-		const salt = await genSalt(10);
-		const hashedPassword = await hash(dto.password, salt);
+	async create(dto: SignupDto | (OAuthSignupDto & { password?: string | null })) {
+		const data: Prisma.UserCreateInput = {
+			fullName: dto.fullName.trim(),
+			username: dto.username.trim().toLowerCase(),
+			email: dto.email.trim().toLowerCase(),
+			password: null,
+			avatarUrl: null,
+		};
 
-		return this.prisma.user.create({
-			data: {
-				fullName: dto.fullName.trim(),
-				username: dto.username.trim().toLowerCase(),
-				email: dto.email.trim().toLowerCase(),
-				password: hashedPassword,
-				avatarUrl: null,
-			},
-		});
+		if (dto.password) {
+			const salt = await genSalt(10);
+			data.password = await hash(dto.password, salt);
+		}
+
+		return this.prisma.user.create({ data });
 	}
 
 	async createOAuth(dto: OAuthSignupDto) {
 		const uniqueUsername = await this.generateUsername(dto.username);
 
-		return this.prisma.user.create({
-			data: {
-				fullName: dto.fullName.trim(),
-				username: uniqueUsername.trim().toLowerCase(),
-				email: dto.email.trim().toLowerCase(),
-				password: null,
-				avatarUrl: dto.avatarUrl || null,
-			},
+		return this.create({
+			...dto,
+			username: uniqueUsername,
+			password: null,
 		});
 	}
 
@@ -64,13 +63,36 @@ export class UserService {
 		return this.prisma.user.findUnique({ where: { username } });
 	}
 
-	async findByidentifier(identifier: string) {
+	async findByIdentifier(identifier: string) {
 		return this.prisma.user.findFirst({
 			where: {
 				OR: [
 					{ username: { equals: identifier.toLowerCase(), mode: 'insensitive' } },
 					{ email: { equals: identifier.toLowerCase(), mode: 'insensitive' } },
 				],
+			},
+		});
+	}
+
+	async searchUsers(dto: SearchUsersDto) {
+		const take = dto.take ?? 20;
+
+		return this.prisma.user.findMany({
+			where: {
+				isActive: true,
+				OR: [
+					{ username: { contains: dto.query, mode: 'insensitive' } },
+					{ fullName: { contains: dto.query, mode: 'insensitive' } },
+				],
+			},
+			orderBy: { createdAt: 'desc' },
+			take,
+			cursor: dto.cursor ? { id: dto.cursor } : undefined,
+			select: {
+				id: true,
+				fullName: true,
+				username: true,
+				avatarUrl: true,
 			},
 		});
 	}
@@ -180,13 +202,26 @@ export class UserService {
 	}
 
 	async generateUsername(base: string): Promise<string> {
-		let username = base.trim().toLowerCase();
-		let i = 1;
+		const cleanBase = base
+			.trim()
+			.toLowerCase()
+			.replace(/\s+/g, '_')
+			.replace(/[^a-z0-9_]/gi, '');
 
-		while (await this.findByUsername(username)) {
-			username = `${base}${i++}`.toLowerCase();
-		}
+		const candidates = Array.from({ length: 20 }, (_, i) =>
+			i === 0 ? cleanBase : `${cleanBase}_${Math.floor(Math.random() * 9999)}`,
+		);
 
-		return username;
+		const user = await this.prisma.user.findMany({
+			where: { username: { in: candidates } },
+			select: { username: true },
+		});
+
+		const existingUser = new Set(user.map(u => u.username));
+
+		const available = candidates.find(u => !existingUser.has(u));
+		if (!available) throw new ConflictException('No available username');
+
+		return available;
 	}
 }

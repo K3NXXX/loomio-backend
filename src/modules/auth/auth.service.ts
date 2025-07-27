@@ -46,7 +46,7 @@ export class AuthService {
 	}
 
 	async login(req: Request, dto: LoginDto) {
-		const [user] = await Promise.all([this.userService.findByidentifier(dto.identifier)]);
+		const [user] = await Promise.all([this.userService.findByIdentifier(dto.identifier)]);
 
 		if (!user || !user.password) throw new BadRequestException('Invalid credentials');
 		if (!user.isActive) throw new ForbiddenException('User account is inactive');

@@ -7,6 +7,7 @@ import {
 	Param,
 	Patch,
 	Post,
+	Query,
 	Res,
 	UploadedFile,
 	UseInterceptors,
@@ -19,6 +20,7 @@ import { CurrentUser } from 'src/common/decorators/user.decorator';
 import { CookieService } from '../auth/cookie.service';
 import { SessionService } from '../auth/sessions/sessions.service';
 import { InviteService } from '../project/invites/invite.service';
+import { SearchUsersDto } from './dto/search-users.dto';
 import { UpdateThemeDto } from './dto/theme.dto';
 import { UserService } from './user.service';
 
@@ -35,6 +37,11 @@ export class UserController {
 	@Get()
 	async getUser(@CurrentUser('id') userId: string) {
 		return this.userService.getAuthUser(userId);
+	}
+
+	@Get('search')
+	async searchUsers(@Query() dto: SearchUsersDto) {
+		return this.userService.searchUsers(dto);
 	}
 
 	@Get('sessions')
