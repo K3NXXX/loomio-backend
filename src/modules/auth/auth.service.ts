@@ -9,6 +9,7 @@ import { ConfigService } from '@nestjs/config';
 import { compare } from 'bcrypt';
 import { Request, Response } from 'express';
 import { OAuthUser } from 'src/common/types/auth.type';
+import { PrismaService } from '../../common/prisma/prisma.service';
 import { AccountService } from '../account/account.service';
 import { VerificationService } from '../email/verification/verification.service';
 import { UserService } from '../user/user.service';
@@ -20,6 +21,7 @@ import { TokenService } from './token.service';
 @Injectable()
 export class AuthService {
 	constructor(
+		private readonly prisma: PrismaService,
 		private readonly configService: ConfigService,
 		private readonly userService: UserService,
 		private readonly sessionService: SessionService,
@@ -37,12 +39,7 @@ export class AuthService {
 		if (existingEmail) throw new ConflictException('User with this email already exists');
 		if (existingUsername) throw new ConflictException('User with this username already exists');
 
-		return this.verificationService.sendVerificationCode(
-			dto.fullName,
-			dto.username,
-			dto.email,
-			dto.password,
-		);
+		return this.verificationService.sendVerificationCode(dto);
 	}
 
 	async login(req: Request, dto: LoginDto) {
@@ -55,28 +52,43 @@ export class AuthService {
 		if (!isMatch) throw new BadRequestException('Invalid credentials');
 
 		const userAgent = req.headers['user-agent'] || '';
+		const ip =
+			(req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.ip || 'unknown';
 
-		return this.tokenService.issueTokens(user, req.ip as string, userAgent);
+		return this.tokenService.issueTokens(user, ip, userAgent);
 	}
 
 	async oauthLogin(profile: OAuthUser, ip: string, userAgent?: string) {
-		let user = await this.userService.findByEmail(profile.email);
-		if (!user) user = await this.userService.createOAuth({ ...profile });
+		const { email, provider, providerId, fullName, username, avatarUrl } = profile;
 
-		const existingAccount = await this.accountService.findAccount(
-			profile.provider,
-			profile.providerId,
-		);
-		if (!existingAccount) {
+		const existingAccount = await this.accountService.findAccount(provider, providerId);
+		if (existingAccount) return this.tokenService.issueTokens(existingAccount.user, ip, userAgent);
+
+		let user = await this.userService.findByEmail(email);
+
+		await this.prisma.$transaction(async tx => {
+			if (!user) {
+				const uniqueUsername = await this.userService.generateUsername(username);
+
+				user = await tx.user.create({
+					data: {
+						fullName: fullName.trim(),
+						username: uniqueUsername,
+						email: email.trim().toLowerCase(),
+						password: null,
+						avatarUrl: avatarUrl ?? null,
+					},
+				});
+			}
+
 			await this.accountService.create({
-				provider: profile.provider,
-				providerId: profile.providerId,
+				provider,
+				providerId,
 				userId: user.id,
 			});
-		}
+		});
 
-		if (existingAccount && existingAccount.userId !== user.id)
-			throw new ConflictException('OAuth provider already linked to another user');
+		if (!user) throw new Error('User not found or failed to create');
 
 		return this.tokenService.issueTokens(user, ip, userAgent);
 	}
@@ -116,8 +128,14 @@ export class AuthService {
 		const ip = req.ip || session.ip || 'unknown';
 		const userAgent = req.headers['user-agent'] || session.userAgent || 'unknown';
 
+		const user = await this.userService.findById(session.userId);
+		if (!user || !user.isActive) {
+			this.cookieService.clearCookies(res);
+			throw new UnauthorizedException('User is not available');
+		}
+
 		const { accessToken, refreshToken: newRefreshToken } = await this.tokenService.issueTokens(
-			session.user,
+			user,
 			ip,
 			userAgent,
 		);
