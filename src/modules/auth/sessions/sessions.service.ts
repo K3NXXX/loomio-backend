@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { compare, hashSync } from 'bcrypt';
+import { hash, verify } from 'argon2';
 import { randomBytes, randomUUID } from 'crypto';
 import { PrismaService } from 'src/common/prisma/prisma.service';
 import { SessionDto } from './dto/session.dto';
@@ -11,7 +11,7 @@ export class SessionService {
 	async create(dto: SessionDto): Promise<string> {
 		const id = randomUUID();
 		const secret = randomBytes(64).toString('hex');
-		const token = hashSync(secret, 10);
+		const token = await hash(secret);
 
 		await this.prisma.$transaction([
 			this.prisma.session.deleteMany({
@@ -59,7 +59,7 @@ export class SessionService {
 
 		if (!session || session.revoked || session.expiresAt < new Date()) return null;
 
-		const isMatch = await compare(secret, session.token);
+		const isMatch = await verify(session.token, secret);
 		if (!isMatch) return null;
 
 		return session;

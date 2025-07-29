@@ -6,22 +6,21 @@ import {
 	UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { compare } from 'bcrypt';
+import { verify } from 'argon2';
 import { Request, Response } from 'express';
 import { OAuthUser } from 'src/common/types/auth.type';
-import { PrismaService } from '../../common/prisma/prisma.service';
 import { AccountService } from '../account/account.service';
 import { VerificationService } from '../email/verification/verification.service';
 import { UserService } from '../user/user.service';
 import { CookieService } from './cookie.service';
 import { LoginDto, SignupDto } from './dto/auth.dto';
+import { OAuthDto } from './dto/oauth.dto';
 import { SessionService } from './sessions/sessions.service';
 import { TokenService } from './token.service';
 
 @Injectable()
 export class AuthService {
 	constructor(
-		private readonly prisma: PrismaService,
 		private readonly configService: ConfigService,
 		private readonly userService: UserService,
 		private readonly sessionService: SessionService,
@@ -43,12 +42,12 @@ export class AuthService {
 	}
 
 	async login(req: Request, dto: LoginDto) {
-		const [user] = await Promise.all([this.userService.findByIdentifier(dto.identifier)]);
+		const user = await this.userService.findByIdentifier(dto.identifier);
 
 		if (!user || !user.password) throw new BadRequestException('Invalid credentials');
 		if (!user.isActive) throw new ForbiddenException('User account is inactive');
 
-		const isMatch = await compare(dto.password, user.password);
+		const isMatch = await verify(user.password, dto.password);
 		if (!isMatch) throw new BadRequestException('Invalid credentials');
 
 		const userAgent = req.headers['user-agent'] || '';
@@ -58,37 +57,22 @@ export class AuthService {
 		return this.tokenService.issueTokens(user, ip, userAgent);
 	}
 
-	async oauthLogin(profile: OAuthUser, ip: string, userAgent?: string) {
-		const { email, provider, providerId, fullName, username, avatarUrl } = profile;
+	async oauthLogin(profile: OAuthDto, ip: string, userAgent?: string) {
+		const { email, provider, providerId } = profile;
 
 		const existingAccount = await this.accountService.findAccount(provider, providerId);
 		if (existingAccount) return this.tokenService.issueTokens(existingAccount.user, ip, userAgent);
 
 		let user = await this.userService.findByEmail(email);
-
-		await this.prisma.$transaction(async tx => {
-			if (!user) {
-				const uniqueUsername = await this.userService.generateUsername(username);
-
-				user = await tx.user.create({
-					data: {
-						fullName: fullName.trim(),
-						username: uniqueUsername,
-						email: email.trim().toLowerCase(),
-						password: null,
-						avatarUrl: avatarUrl ?? null,
-					},
-				});
-			}
-
+		if (!user) {
+			user = await this.userService.createOAuth(profile);
+		} else {
 			await this.accountService.create({
 				provider,
 				providerId,
 				userId: user.id,
 			});
-		});
-
-		if (!user) throw new Error('User not found or failed to create');
+		}
 
 		return this.tokenService.issueTokens(user, ip, userAgent);
 	}

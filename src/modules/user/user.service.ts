@@ -5,12 +5,12 @@ import {
 	InternalServerErrorException,
 	NotFoundException,
 } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
-import { compare, genSalt, hash } from 'bcrypt';
+import { Prisma, User } from '@prisma/client';
+import { hash, verify } from 'argon2';
 import { CloudinaryService } from 'src/common/libs/cloudinary/cloudinary.service';
 import { PrismaService } from 'src/common/prisma/prisma.service';
 import { SignupDto } from '../auth/dto/auth.dto';
-import { OAuthSignupDto } from '../auth/dto/oauth.dto';
+import { OAuthDto } from '../auth/dto/oauth.dto';
 import { SearchUsersDto } from './dto/search-users.dto';
 import { UpdateThemeDto } from './dto/theme.dto';
 
@@ -21,30 +21,43 @@ export class UserService {
 		private readonly cloudinary: CloudinaryService,
 	) {}
 
-	async create(dto: SignupDto | (OAuthSignupDto & { password?: string | null })) {
+	async create(dto: SignupDto | (OAuthDto & { password?: string | null })) {
 		const data: Prisma.UserCreateInput = {
 			fullName: dto.fullName.trim(),
 			username: dto.username.trim().toLowerCase(),
 			email: dto.email.trim().toLowerCase(),
+			avatarUrl: 'avatarUrl' in dto ? (dto.avatarUrl ?? null) : null,
 			password: null,
-			avatarUrl: null,
 		};
 
-		if (dto.password) {
-			const salt = await genSalt(10);
-			data.password = await hash(dto.password, salt);
-		}
+		if (dto.password) data.password = await hash(dto.password);
 
 		return this.prisma.user.create({ data });
 	}
 
-	async createOAuth(dto: OAuthSignupDto) {
-		const uniqueUsername = await this.generateUsername(dto.username);
+	async createOAuth(dto: OAuthDto): Promise<User> {
+		const username = await this.generateUsername(dto.username);
 
-		return this.create({
-			...dto,
-			username: uniqueUsername,
-			password: null,
+		return this.prisma.$transaction(async tx => {
+			const user = await tx.user.create({
+				data: {
+					fullName: dto.fullName.trim(),
+					username: username.trim().toLowerCase(),
+					email: dto.email.trim().toLowerCase(),
+					avatarUrl: dto.avatarUrl ?? null,
+					password: null,
+				},
+			});
+
+			await tx.account.create({
+				data: {
+					provider: dto.provider,
+					providerId: dto.providerId,
+					userId: user.id,
+				},
+			});
+
+			return user;
 		});
 	}
 
@@ -130,13 +143,12 @@ export class UserService {
 		if (!user) throw new NotFoundException('User not found');
 
 		if (user.password) {
-			const isSamePassword = await compare(password, user.password);
+			const isSamePassword = await verify(user.password, password);
 			if (isSamePassword)
 				throw new ConflictException('The new password must be different from the current password');
 		}
 
-		const salt = await genSalt(10);
-		const hashedPassword = await hash(password, salt);
+		const hashedPassword = await hash(password);
 
 		await this.prisma.user.update({
 			where: { id },
@@ -206,21 +218,27 @@ export class UserService {
 			.trim()
 			.toLowerCase()
 			.replace(/\s+/g, '_')
-			.replace(/[^a-z0-9_]/gi, '');
+			.replace(/[^a-z0-9_]/g, '');
 
-		const candidates = Array.from({ length: 20 }, (_, i) =>
-			i === 0 ? cleanBase : `${cleanBase}_${Math.floor(Math.random() * 9999)}`,
-		);
+		const candidates = new Set<string>();
+		candidates.add(cleanBase);
 
-		const user = await this.prisma.user.findMany({
-			where: { username: { in: candidates } },
+		while (candidates.size < 20) {
+			const suffix = Math.floor(1000 + Math.random() * 9000);
+			candidates.add(`${cleanBase}_${suffix}`);
+		}
+
+		const usernames = Array.from(candidates);
+
+		const existing = await this.prisma.user.findMany({
+			where: { username: { in: usernames } },
 			select: { username: true },
 		});
 
-		const existingUser = new Set(user.map(u => u.username));
+		const taken = new Set(existing.map(u => u.username));
+		const available = usernames.find(u => !taken.has(u));
 
-		const available = candidates.find(u => !existingUser.has(u));
-		if (!available) throw new ConflictException('No available username');
+		if (!available) throw new ConflictException('Unable to generate a unique username');
 
 		return available;
 	}

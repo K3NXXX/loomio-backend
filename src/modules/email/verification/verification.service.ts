@@ -5,7 +5,7 @@ import {
 	NotFoundException,
 } from '@nestjs/common';
 import { TokenType } from '@prisma/client';
-import { hash } from 'bcrypt';
+import { hash } from 'argon2';
 import { MailService } from 'src/common/libs/mail/mail.service';
 import { generateCode, hashSecret } from 'src/common/utils/generate-code.util';
 import { getSecondsRemaining } from 'src/common/utils/seconds-remaining.util';
@@ -45,7 +45,7 @@ export class VerificationService {
 			await this.prisma.token.delete({ where: { id: token.id } });
 		}
 
-		const hashedPassword = await hash(dto.password, 10);
+		const hashedPassword = await hash(dto.password);
 		const code = generateCode();
 		const hashedCode = hashSecret(code);
 		const tokenExpiresAt = new Date(Date.now() + 10 * 60 * 1000);
