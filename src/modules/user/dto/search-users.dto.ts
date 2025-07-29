@@ -1,4 +1,4 @@
-import { IsOptional, IsString, MinLength } from 'class-validator';
+import { IsOptional, IsString, IsUUID, MinLength } from 'class-validator';
 
 export class SearchUsersDto {
 	@IsString()
@@ -6,9 +6,9 @@ export class SearchUsersDto {
 	query: string;
 
 	@IsOptional()
-	@IsString()
-	cursor?: string;
+	take?: number;
 
 	@IsOptional()
-	take?: number;
+	@IsUUID()
+	cursor?: string;
 }

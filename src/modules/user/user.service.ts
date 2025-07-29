@@ -75,7 +75,7 @@ export class UserService {
 	}
 
 	async searchUsers(dto: SearchUsersDto) {
-		const take = dto.take ?? 20;
+		const take = Number(dto.take ?? 10);
 
 		return this.prisma.user.findMany({
 			where: {
@@ -85,7 +85,7 @@ export class UserService {
 					{ fullName: { contains: dto.query, mode: 'insensitive' } },
 				],
 			},
-			orderBy: { createdAt: 'desc' },
+			orderBy: { createdAt: 'asc' },
 			take,
 			cursor: dto.cursor ? { id: dto.cursor } : undefined,
 			select: {
