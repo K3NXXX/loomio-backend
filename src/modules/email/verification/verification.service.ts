@@ -52,7 +52,7 @@ export class VerificationService {
 		const throttleExpiresAt = new Date(Date.now() + 60 * 1000);
 
 		const meta: SignupMeta = {
-			fullName: dto.fullName,
+			name: dto.name,
 			username: dto.username,
 			email: dto.email,
 			password: hashedPassword,
@@ -137,7 +137,7 @@ export class VerificationService {
 
 		const user = await this.prisma.user.create({
 			data: {
-				fullName: meta.fullName,
+				name: meta.name,
 				username: meta.username,
 				email: meta.email,
 				password: meta.password,

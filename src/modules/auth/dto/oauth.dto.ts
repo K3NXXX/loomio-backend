@@ -1,12 +1,10 @@
-import { IsEmail, IsNotEmpty, IsOptional, IsString } from 'class-validator';
+import { IsEmail, IsOptional, IsString } from 'class-validator';
 
 export class OAuthDto {
 	@IsString()
-	@IsNotEmpty()
-	fullName: string;
+	name: string;
 
 	@IsString()
-	@IsNotEmpty()
 	username: string;
 
 	@IsString()
@@ -18,10 +16,8 @@ export class OAuthDto {
 	avatarUrl?: string;
 
 	@IsString()
-	@IsNotEmpty()
 	provider: string;
 
 	@IsString()
-	@IsNotEmpty()
 	providerId: string;
 }

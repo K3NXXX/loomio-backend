@@ -23,7 +23,7 @@ export class UserService {
 
 	async create(dto: SignupDto | (OAuthDto & { password?: string | null })) {
 		const data: Prisma.UserCreateInput = {
-			fullName: dto.fullName.trim(),
+			name: dto.name.trim(),
 			username: dto.username.trim().toLowerCase(),
 			email: dto.email.trim().toLowerCase(),
 			avatarUrl: 'avatarUrl' in dto ? (dto.avatarUrl ?? null) : null,
@@ -41,7 +41,7 @@ export class UserService {
 		return this.prisma.$transaction(async tx => {
 			const user = await tx.user.create({
 				data: {
-					fullName: dto.fullName.trim(),
+					name: dto.name.trim(),
 					username: username.trim().toLowerCase(),
 					email: dto.email.trim().toLowerCase(),
 					avatarUrl: dto.avatarUrl ?? null,
@@ -92,7 +92,7 @@ export class UserService {
 			where: { id },
 			select: {
 				id: true,
-				fullName: true,
+				name: true,
 				username: true,
 				email: true,
 				avatarUrl: true,
@@ -111,7 +111,7 @@ export class UserService {
 				isActive: true,
 				OR: [
 					{ username: { contains: query, mode: 'insensitive' } },
-					{ fullName: { contains: query, mode: 'insensitive' } },
+					{ name: { contains: query, mode: 'insensitive' } },
 				],
 			},
 			orderBy: { username: 'asc' },
@@ -120,7 +120,7 @@ export class UserService {
 			cursor: cursor ? { id: cursor } : undefined,
 			select: {
 				id: true,
-				fullName: true,
+				name: true,
 				username: true,
 				avatarUrl: true,
 			},

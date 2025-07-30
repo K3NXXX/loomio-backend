@@ -30,7 +30,7 @@ export class InviteService {
 				user: {
 					select: {
 						id: true,
-						fullName: true,
+						name: true,
 						email: true,
 					},
 				},
@@ -56,7 +56,7 @@ export class InviteService {
 				invitedBy: {
 					select: {
 						id: true,
-						fullName: true,
+						name: true,
 						email: true,
 					},
 				},
@@ -97,7 +97,7 @@ export class InviteService {
 				user: {
 					select: {
 						id: true,
-						fullName: true,
+						name: true,
 						username: true,
 						email: true,
 						avatarUrl: true,
@@ -133,7 +133,7 @@ export class InviteService {
 				user: {
 					select: {
 						id: true,
-						fullName: true,
+						name: true,
 						username: true,
 						email: true,
 						avatarUrl: true,

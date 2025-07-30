@@ -10,7 +10,7 @@ datasource db {
 
 model User {
   id       String  @id @default(uuid())
-  fullName String  @map("full_name") @db.VarChar(50)
+  name     String  @db.VarChar(255)
   username String  @unique @db.VarChar(39)
   email    String  @unique @db.VarChar(255)
   password String? @db.VarChar(255)
