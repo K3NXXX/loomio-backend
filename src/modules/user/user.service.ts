@@ -87,29 +87,6 @@ export class UserService {
 		});
 	}
 
-	async searchUsers(dto: SearchUsersDto) {
-		const take = Number(dto.take ?? 10);
-
-		return this.prisma.user.findMany({
-			where: {
-				isActive: true,
-				OR: [
-					{ username: { contains: dto.query, mode: 'insensitive' } },
-					{ fullName: { contains: dto.query, mode: 'insensitive' } },
-				],
-			},
-			orderBy: { createdAt: 'asc' },
-			take,
-			cursor: dto.cursor ? { id: dto.cursor } : undefined,
-			select: {
-				id: true,
-				fullName: true,
-				username: true,
-				avatarUrl: true,
-			},
-		});
-	}
-
 	async getAuthUser(id: string) {
 		return this.prisma.user.findUnique({
 			where: { id },
@@ -121,6 +98,31 @@ export class UserService {
 				avatarUrl: true,
 				isActive: true,
 				theme: true,
+			},
+		});
+	}
+
+	async searchUsers(dto: SearchUsersDto) {
+		const take = Number(dto.take ?? 10);
+		const { query, cursor } = dto;
+
+		return this.prisma.user.findMany({
+			where: {
+				isActive: true,
+				OR: [
+					{ username: { contains: query, mode: 'insensitive' } },
+					{ fullName: { contains: query, mode: 'insensitive' } },
+				],
+			},
+			orderBy: { username: 'asc' },
+			take,
+			skip: cursor ? 1 : 0,
+			cursor: cursor ? { id: cursor } : undefined,
+			select: {
+				id: true,
+				fullName: true,
+				username: true,
+				avatarUrl: true,
 			},
 		});
 	}
