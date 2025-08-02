@@ -14,7 +14,9 @@ import { VerificationModule } from '../email/verification/verification.module';
 import { UserModule } from '../user/user.module';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
-import { UserSessionService } from './sessions/user-sessions.service';
+import { CookieService } from './cookie.service';
+import { SessionService } from './sessions/sessions.service';
+import { TokenService } from './token.service';
 
 @Module({
 	imports: [
@@ -32,7 +34,15 @@ import { UserSessionService } from './sessions/user-sessions.service';
 		PrismaModule,
 	],
 	controllers: [AuthController],
-	providers: [AuthService, JwtStrategy, GoogleStrategy, GithubStrategy, UserSessionService],
+	providers: [
+		AuthService,
+		JwtStrategy,
+		GoogleStrategy,
+		GithubStrategy,
+		SessionService,
+		TokenService,
+		CookieService,
+	],
 	exports: [AuthService],
 })
 export class AuthModule {}

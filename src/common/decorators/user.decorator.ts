@@ -1,10 +1,10 @@
 import { createParamDecorator, ExecutionContext, UnauthorizedException } from '@nestjs/common';
-import { OAuthUser } from '../types/auth.type';
+import { User } from '@prisma/client';
 
 export const CurrentUser = createParamDecorator(
-	(data: keyof OAuthUser | undefined, context: ExecutionContext): any => {
+	(data: keyof User | undefined, context: ExecutionContext): any => {
 		const request = context.switchToHttp().getRequest();
-		const user = request.user as OAuthUser;
+		const user = request.user as User;
 
 		if (!user) throw new UnauthorizedException('User is not authenticated');
 

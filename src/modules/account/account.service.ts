@@ -10,7 +10,9 @@ export class AccountService {
 			where: {
 				provider_providerId: { provider, providerId },
 			},
-			include: { user: true },
+			include: {
+				user: true,
+			},
 		});
 	}
 
