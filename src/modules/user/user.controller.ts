@@ -40,8 +40,8 @@ export class UserController {
 	}
 
 	@Get('search')
-	async searchUsers(@Query() dto: SearchUsersDto) {
-		return this.userService.searchUsers(dto);
+	async searchUsers(@CurrentUser('id') userId: string, @Query() dto: SearchUsersDto) {
+		return this.userService.searchUsers(userId, dto);
 	}
 
 	@Get('sessions')

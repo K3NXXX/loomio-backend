@@ -102,12 +102,13 @@ export class UserService {
 		});
 	}
 
-	async searchUsers(dto: SearchUsersDto) {
+	async searchUsers(userId: string, dto: SearchUsersDto) {
 		const take = Number(dto.take ?? 10);
 		const { query, cursor } = dto;
 
 		return this.prisma.user.findMany({
 			where: {
+				id: { not: userId },
 				isActive: true,
 				OR: [
 					{ username: { contains: query, mode: 'insensitive' } },

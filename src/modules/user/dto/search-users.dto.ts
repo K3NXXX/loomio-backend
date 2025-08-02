@@ -3,7 +3,7 @@ import { IsInt, IsOptional, IsString, IsUUID, Max, Min, MinLength } from 'class-
 
 export class SearchUsersDto {
 	@IsString()
-	@MinLength(2)
+	@MinLength(1)
 	query: string;
 
 	@IsOptional()
