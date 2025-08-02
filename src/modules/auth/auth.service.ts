@@ -1,76 +1,72 @@
 import {
 	BadRequestException,
 	ConflictException,
+	ForbiddenException,
 	Injectable,
 	UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { JwtService } from '@nestjs/jwt';
-import { User } from '@prisma/client';
-import { compare } from 'bcrypt';
-import { CookieOptions, Request, Response } from 'express';
+import { verify } from 'argon2';
+import { Request, Response } from 'express';
 import { OAuthUser } from 'src/common/types/auth.type';
 import { AccountService } from '../account/account.service';
 import { VerificationService } from '../email/verification/verification.service';
 import { UserService } from '../user/user.service';
+import { CookieService } from './cookie.service';
 import { LoginDto, SignupDto } from './dto/auth.dto';
-import { UserSessionService } from './sessions/user-sessions.service';
+import { OAuthDto } from './dto/oauth.dto';
+import { SessionService } from './sessions/sessions.service';
+import { TokenService } from './token.service';
 
 @Injectable()
 export class AuthService {
 	constructor(
-		private readonly jwt: JwtService,
 		private readonly configService: ConfigService,
 		private readonly userService: UserService,
-		private readonly userSessionService: UserSessionService,
+		private readonly sessionService: SessionService,
 		private readonly accountService: AccountService,
 		private readonly verificationService: VerificationService,
+		private readonly tokenService: TokenService,
+		private readonly cookieService: CookieService,
 	) {}
 
 	async register(dto: SignupDto) {
-		const existing = await this.userService.findByEmail(dto.email);
-		if (existing) throw new ConflictException('User with this email already exists');
-
-		const existingUsername = await this.userService.findByUsername(dto.username);
+		const [existingEmail, existingUsername] = await Promise.all([
+			this.userService.findByEmail(dto.email),
+			this.userService.findByUsername(dto.username),
+		]);
+		if (existingEmail) throw new ConflictException('User with this email already exists');
 		if (existingUsername) throw new ConflictException('User with this username already exists');
 
-		return this.verificationService.sendVerificationCode(
-			dto.fullName,
-			dto.username,
-			dto.email,
-			dto.password,
-		);
+		return this.verificationService.sendVerificationCode(dto);
 	}
 
-	async login(dto: LoginDto, req: Request) {
-		const user = await this.userService.findByidentifier(dto.identifier);
-		if (!user || !user.password) throw new BadRequestException('Invalid credentials');
+	async login(req: Request, dto: LoginDto) {
+		const user = await this.userService.findByIdentifier(dto.identifier);
 
-		const isMatch = await compare(dto.password, user.password);
+		if (!user || !user.password) throw new BadRequestException('Invalid credentials');
+		if (!user.isActive) throw new ForbiddenException('User account is inactive');
+
+		const isMatch = await verify(user.password, dto.password);
 		if (!isMatch) throw new BadRequestException('Invalid credentials');
 
 		const userAgent = req.headers['user-agent'] || '';
+		const ip =
+			(req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.ip || 'unknown';
 
-		return this.issueTokens(user, req.ip as string, userAgent);
+		return this.tokenService.issueTokens(user, ip, userAgent);
 	}
 
-	async oauthLogin(profile: OAuthUser, ip: string, userAgent?: string) {
-		const { fullName, username, email, avatarUrl, provider, providerId } = profile;
+	async oauthLogin(profile: OAuthDto, ip: string, userAgent?: string) {
+		const { email, provider, providerId } = profile;
+
+		const existingAccount = await this.accountService.findAccount(provider, providerId);
+		if (existingAccount) return this.tokenService.issueTokens(existingAccount.user, ip, userAgent);
 
 		let user = await this.userService.findByEmail(email);
 		if (!user) {
-			const uniqueUsername = await this.userService.generateUsername(username);
-			user = await this.userService.create(
-				fullName as string,
-				uniqueUsername,
-				email,
-				null,
-				avatarUrl,
-			);
-		}
-
-		const existingAccount = await this.accountService.findAccount(provider, providerId);
-		if (!existingAccount) {
+			user = await this.userService.createOAuth(profile);
+		} else {
 			await this.accountService.create({
 				provider,
 				providerId,
@@ -78,124 +74,62 @@ export class AuthService {
 			});
 		}
 
-		return this.issueTokens(user, ip, userAgent);
-	}
-
-	async getAuthUser(userId: string) {
-		return this.userService.findById(userId, {
-			id: true,
-			fullName: true,
-			username: true,
-			email: true,
-			avatarUrl: true,
-			isActive: true,
-		});
-	}
-
-	async logout(req: Request, res: Response) {
-		const refreshToken = req.cookies['refreshToken'];
-		if (!refreshToken) throw new UnauthorizedException('Refresh token missing');
-
-		const session = await this.userSessionService.findByToken(refreshToken);
-		if (!session) throw new UnauthorizedException('Invalid refresh token');
-
-		await this.userSessionService.revoke(session.id);
-		this.clearAuthCookies(res);
-	}
-
-	async refresh(req: Request) {
-		const refreshToken = req.cookies['refreshToken'];
-		if (!refreshToken) throw new UnauthorizedException('Refresh token missing');
-
-		const session = await this.userSessionService.findByToken(refreshToken);
-		if (!session) throw new UnauthorizedException('Invalid or expired refresh token');
-
-		const userAgent = req.headers['user-agent'] || '';
-
-		await this.userSessionService.revoke(session.id);
-		return this.issueTokens(session.user, req.ip as string, userAgent);
-	}
-
-	async issueTokens(user: User, ip: string, userAgent?: string) {
-		const accessToken = await this.generateAccessToken(user.id);
-		const refreshToken = await this.createSession(user.id, ip, userAgent);
-		const { password, ...sanitizedUser } = user;
-
-		return {
-			user: sanitizedUser,
-			accessToken,
-			refreshToken,
-		};
-	}
-
-	private async generateAccessToken(userId: string): Promise<string> {
-		return this.jwt.signAsync(
-			{ id: userId },
-			{
-				expiresIn: this.configService.get<string>('JWT_ACCESS_EXPIRES_IN'),
-				subject: userId,
-			},
-		);
-	}
-
-	private async createSession(userId: string, ip: string, userAgent?: string): Promise<string> {
-		const ttlDays = this.configService.getOrThrow<number>('REFRESH_TOKEN_TTL_DAYS');
-		const expiresAt = new Date(Date.now() + ttlDays * 24 * 60 * 60 * 1000);
-
-		return this.userSessionService.create({
-			userId,
-			ip,
-			userAgent,
-			expiresAt,
-		});
-	}
-
-	async setAuthCookies(res: Response, accessToken: string, refreshToken: string) {
-		const isProduction = this.configService.get<string>('NODE_ENV') === 'production';
-		const ttlDays = this.configService.getOrThrow<number>('REFRESH_TOKEN_TTL_DAYS');
-
-		const commonOptions: CookieOptions = {
-			httpOnly: true,
-			secure: !isProduction,
-			sameSite: !isProduction ? 'none' : 'lax',
-			path: '/',
-			partitioned: !isProduction,
-		};
-
-		res.cookie('accessToken', accessToken, {
-			...commonOptions,
-			maxAge: 15 * 60 * 1000,
-		});
-
-		res.cookie('refreshToken', refreshToken, {
-			...commonOptions,
-			expires: new Date(Date.now() + ttlDays * 24 * 60 * 60 * 1000),
-		});
-	}
-
-	async clearAuthCookies(res: Response) {
-		const isProduction = this.configService.get<string>('NODE_ENV') === 'production';
-
-		const expiredOptions: CookieOptions = {
-			httpOnly: true,
-			secure: !isProduction,
-			sameSite: !isProduction ? 'none' : 'lax',
-			path: '/',
-			partitioned: !isProduction,
-			expires: new Date(0),
-		};
-
-		res.cookie('accessToken', '', expiredOptions);
-		res.cookie('refreshToken', '', expiredOptions);
+		return this.tokenService.issueTokens(user, ip, userAgent);
 	}
 
 	async handleCallback(req: Request, res: Response) {
 		const userAgent = req.headers['user-agent'] || '';
 		const result = await this.oauthLogin(req.user as OAuthUser, req.ip as string, userAgent);
-		const clientUrl = await this.configService.get('CLIENT_URL');
+		const clientUrl = this.configService.getOrThrow<string>('CLIENT_URL');
 
-		await this.setAuthCookies(res, result.accessToken, result.refreshToken);
+		this.cookieService.setCookies(res, result.accessToken, result.refreshToken);
 
 		return res.redirect(`${clientUrl}/callback`);
+	}
+
+	async logout(req: Request) {
+		const refreshToken = req.cookies['refreshToken'];
+		if (!refreshToken) throw new UnauthorizedException('Refresh token missing');
+
+		const session = await this.sessionService.findByToken(refreshToken);
+		if (!session) throw new UnauthorizedException('Invalid refresh token');
+
+		await this.sessionService.revoke(session.id);
+	}
+
+	async refresh(req: Request, res: Response) {
+		const refreshToken = req.cookies['refreshToken'];
+		if (!refreshToken) throw new UnauthorizedException('Refresh token missing');
+
+		const session = await this.sessionService.findByToken(refreshToken);
+		if (!session || session.revokedAt || session.expiresAt < new Date()) {
+			this.cookieService.clearCookies(res);
+			throw new UnauthorizedException('Invalid or expired session');
+		}
+
+		await this.sessionService.delete(session.userId, session.id);
+
+		const ip = req.ip || session.ip || 'unknown';
+		const userAgent = req.headers['user-agent'] || session.userAgent || 'unknown';
+
+		const user = await this.userService.findById(session.userId);
+		if (!user || !user.isActive) {
+			this.cookieService.clearCookies(res);
+			throw new UnauthorizedException('User is not available');
+		}
+
+		const { accessToken, refreshToken: newRefreshToken } = await this.tokenService.issueTokens(
+			user,
+			ip,
+			userAgent,
+		);
+
+		this.cookieService.setCookies(res, accessToken, newRefreshToken);
+
+		return {
+			user: session.user,
+			accessToken,
+			refreshToken: newRefreshToken,
+		};
 	}
 }

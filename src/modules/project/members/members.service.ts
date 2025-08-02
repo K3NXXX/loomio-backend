@@ -53,7 +53,7 @@ export class MembersService {
 				user: {
 					select: {
 						id: true,
-						fullName: true,
+						name: true,
 						username: true,
 						avatarUrl: true,
 					},

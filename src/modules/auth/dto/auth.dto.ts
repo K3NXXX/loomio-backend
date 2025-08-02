@@ -13,12 +13,15 @@ import { IsPasswordsMatch } from '../../../common/decorators/is-pwds-match.decor
 export class SignupDto {
 	@IsString()
 	@IsNotEmpty()
-	@Length(5, 50)
-	@Matches(/^[a-zA-Zа-яА-ЯёЁіІїЇєЄґҐ'’\-]{2,}( [a-zA-Zа-яА-ЯёЁіІїЇєЄґҐ'’\-]{2,})+$/, {
-		message:
-			'Full name must contain at least two words with only letters, spaces, apostrophes, or dashes',
-	})
-	fullName: string;
+	@Length(2, 255)
+	@Matches(
+		/^(?!.*['\u2019]{2})(?!.* {2})(?!['\u2019 ])[a-zA-Zа-яА-ЯёЁіІїЇєЄґҐ'’\- ]+(?<!['\u2019 ])$/,
+		{
+			message:
+				'Name must contain only letters, single apostrophes or spaces (no repeats), and must not start or end with a space or apostrophe',
+		},
+	)
+	name: string;
 
 	@IsString()
 	@IsNotEmpty()
@@ -55,7 +58,7 @@ export class LoginDto {
 }
 
 export type SignupMeta = {
-	fullName: string;
+	name: string;
 	username: string;
 	email: string;
 	password: string;

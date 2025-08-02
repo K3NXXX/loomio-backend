@@ -5,11 +5,11 @@ import {
 	NotFoundException,
 } from '@nestjs/common';
 import { TokenType } from '@prisma/client';
-import { hash } from 'bcrypt';
+import { hash } from 'argon2';
 import { MailService } from 'src/common/libs/mail/mail.service';
 import { generateCode, hashSecret } from 'src/common/utils/generate-code.util';
 import { getSecondsRemaining } from 'src/common/utils/seconds-remaining.util';
-import { SignupMeta } from 'src/modules/auth/dto/auth.dto';
+import { SignupDto, SignupMeta } from 'src/modules/auth/dto/auth.dto';
 import { UserService } from 'src/modules/user/user.service';
 import { PrismaService } from '../../../common/prisma/prisma.service';
 import { ResendCodeDto } from './dto/resend-code.dto';
@@ -23,11 +23,11 @@ export class VerificationService {
 		private readonly userService: UserService,
 	) {}
 
-	async sendVerificationCode(fullName: string, username: string, email: string, password: string) {
+	async sendVerificationCode(dto: SignupDto) {
 		const token = await this.prisma.token.findUnique({
 			where: {
 				email_type: {
-					email,
+					email: dto.email,
 					type: TokenType.VERIFICATION,
 				},
 			},
@@ -45,22 +45,22 @@ export class VerificationService {
 			await this.prisma.token.delete({ where: { id: token.id } });
 		}
 
-		const hashedPassword = await hash(password, 10);
+		const hashedPassword = await hash(dto.password);
 		const code = generateCode();
 		const hashedCode = hashSecret(code);
 		const tokenExpiresAt = new Date(Date.now() + 10 * 60 * 1000);
 		const throttleExpiresAt = new Date(Date.now() + 60 * 1000);
 
 		const meta: SignupMeta = {
-			fullName,
-			username,
-			email,
+			name: dto.name,
+			username: dto.username,
+			email: dto.email,
 			password: hashedPassword,
 		};
 
 		await this.prisma.token.create({
 			data: {
-				email,
+				email: dto.email,
 				code: hashedCode,
 				expiresAt: tokenExpiresAt,
 				type: TokenType.VERIFICATION,
@@ -68,7 +68,7 @@ export class VerificationService {
 			},
 		});
 
-		await this.mailService.sendVerificationCode(email, code);
+		await this.mailService.sendVerificationCode(dto.email, code);
 
 		return throttleExpiresAt;
 	}
@@ -137,7 +137,7 @@ export class VerificationService {
 
 		const user = await this.prisma.user.create({
 			data: {
-				fullName: meta.fullName,
+				name: meta.name,
 				username: meta.username,
 				email: meta.email,
 				password: meta.password,
