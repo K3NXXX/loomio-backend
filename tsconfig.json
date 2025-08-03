@@ -9,7 +9,10 @@
 		"target": "ESNEXT",
 		"sourceMap": true,
 		"outDir": "./dist",
-		"baseUrl": "./",
+		"baseUrl": "./src",
+		"paths": {
+			"@/*": ["*"]
+		},
 		"incremental": true,
 		"skipLibCheck": true,
 		"strictNullChecks": true,
@@ -18,5 +21,7 @@
 		"strictBindCallApply": false,
 		"noFallthroughCasesInSwitch": false,
 		"jsx": "react"
-	}
+	},
+	"include": ["src/**/*.ts", "test/**/*.ts"],
+	"exclude": ["node_modules", "dist"]
 }

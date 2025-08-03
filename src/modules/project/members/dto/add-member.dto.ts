@@ -1,10 +1,10 @@
-import { MemberRole } from '@prisma/client';
-import { IsEnum, IsUUID } from 'class-validator';
+import { MemberRole } from "@prisma/client";
+import { IsEnum, IsUUID } from "class-validator";
 
 export default class AddMemberDto {
-	@IsUUID()
-	userId: string;
+  @IsUUID()
+  userId: string;
 
-	@IsEnum(MemberRole)
-	role: MemberRole;
+  @IsEnum(MemberRole)
+  role: MemberRole;
 }

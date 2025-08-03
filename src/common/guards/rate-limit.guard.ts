@@ -1,34 +1,38 @@
 import {
-	CanActivate,
-	ExecutionContext,
-	HttpException,
-	HttpStatus,
-	Injectable,
-	mixin,
-	Type,
-} from '@nestjs/common';
-import { RateLimiterMemory } from 'rate-limiter-flexible';
+  CanActivate,
+  ExecutionContext,
+  HttpException,
+  HttpStatus,
+  Injectable,
+  mixin,
+  Type,
+} from "@nestjs/common";
+import { Request } from "express";
+import { RateLimiterMemory } from "rate-limiter-flexible";
 
-export function RateLimitGuard(points: number, duration: number): Type<CanActivate> {
-	@Injectable()
-	class MixinRateLimitGuard implements CanActivate {
-		private rateLimiter = new RateLimiterMemory({ points, duration });
+export function RateLimitGuard(
+  points: number,
+  duration: number,
+): Type<CanActivate> {
+  @Injectable()
+  class MixinRateLimitGuard implements CanActivate {
+    private rateLimiter = new RateLimiterMemory({ points, duration });
 
-		async canActivate(context: ExecutionContext): Promise<boolean> {
-			const request = context.switchToHttp().getRequest();
-			const ip = request.ip;
+    async canActivate(context: ExecutionContext): Promise<boolean> {
+      const request = context.switchToHttp().getRequest<Request>();
+      const ip: string = request.ip ?? "unknown";
 
-			try {
-				await this.rateLimiter.consume(ip);
-				return true;
-			} catch {
-				throw new HttpException(
-					'Too many requests. Please try again later.',
-					HttpStatus.TOO_MANY_REQUESTS,
-				);
-			}
-		}
-	}
+      try {
+        await this.rateLimiter.consume(ip);
+        return true;
+      } catch {
+        throw new HttpException(
+          "Too many requests. Please try again later.",
+          HttpStatus.TOO_MANY_REQUESTS,
+        );
+      }
+    }
+  }
 
-	return mixin(MixinRateLimitGuard);
+  return mixin(MixinRateLimitGuard);
 }

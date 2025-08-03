@@ -1,135 +1,151 @@
 import {
-	BadRequestException,
-	ConflictException,
-	ForbiddenException,
-	Injectable,
-	UnauthorizedException,
-} from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import { verify } from 'argon2';
-import { Request, Response } from 'express';
-import { OAuthUser } from 'src/common/types/auth.type';
-import { AccountService } from '../account/account.service';
-import { VerificationService } from '../email/verification/verification.service';
-import { UserService } from '../user/user.service';
-import { CookieService } from './cookie.service';
-import { LoginDto, SignupDto } from './dto/auth.dto';
-import { OAuthDto } from './dto/oauth.dto';
-import { SessionService } from './sessions/sessions.service';
-import { TokenService } from './token.service';
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  Logger,
+  UnauthorizedException,
+} from "@nestjs/common";
+import { verify } from "argon2";
+import { Request } from "express";
+
+import { AccountService } from "../account/account.service";
+import { VerificationService } from "../email/verification/verification.service";
+import { UserService } from "../user/user.service";
+
+import { LoginDto, SignupDto } from "./dto/auth.dto";
+import { OAuthDto } from "./dto/oauth.dto";
+import { SessionService } from "./sessions/sessions.service";
+import { TokenService } from "./token.service";
 
 @Injectable()
 export class AuthService {
-	constructor(
-		private readonly configService: ConfigService,
-		private readonly userService: UserService,
-		private readonly sessionService: SessionService,
-		private readonly accountService: AccountService,
-		private readonly verificationService: VerificationService,
-		private readonly tokenService: TokenService,
-		private readonly cookieService: CookieService,
-	) {}
+  constructor(
+    private readonly userService: UserService,
+    private readonly sessionService: SessionService,
+    private readonly accountService: AccountService,
+    private readonly verificationService: VerificationService,
+    private readonly tokenService: TokenService,
+  ) {}
 
-	async register(dto: SignupDto) {
-		const [existingEmail, existingUsername] = await Promise.all([
-			this.userService.findByEmail(dto.email),
-			this.userService.findByUsername(dto.username),
-		]);
-		if (existingEmail) throw new ConflictException('User with this email already exists');
-		if (existingUsername) throw new ConflictException('User with this username already exists');
+  private logger = new Logger(AccountService.name);
 
-		return this.verificationService.sendVerificationCode(dto);
-	}
+  async register(dto: SignupDto) {
+    try {
+      const [existingEmail, existingUsername] = await Promise.all([
+        this.userService.findByEmail(dto.email),
+        this.userService.findByUsername(dto.username),
+      ]);
 
-	async login(req: Request, dto: LoginDto) {
-		const user = await this.userService.findByIdentifier(dto.identifier);
+      if (existingEmail)
+        throw new ConflictException("User with this email already exists");
+      if (existingUsername)
+        throw new ConflictException("User with this username already exists");
 
-		if (!user || !user.password) throw new BadRequestException('Invalid credentials');
-		if (!user.isActive) throw new ForbiddenException('User account is inactive');
+      return this.verificationService.sendVerificationCode(dto);
+    } catch (error) {
+      this.logger.error(
+        `Registration failed: ${error instanceof Error ? error.message : error}`,
+      );
+      throw new BadRequestException("Registration failed");
+    }
+  }
 
-		const isMatch = await verify(user.password, dto.password);
-		if (!isMatch) throw new BadRequestException('Invalid credentials');
+  async login(ip: string, userAgent: string, dto: LoginDto) {
+    try {
+      const user = await this.userService.findByIdentifier(dto.identifier);
 
-		const userAgent = req.headers['user-agent'] || '';
-		const ip =
-			(req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.ip || 'unknown';
+      if (!user || !user.password)
+        throw new BadRequestException("Invalid credentials");
+      if (!user.isActive)
+        throw new ForbiddenException("User account is inactive");
 
-		return this.tokenService.issueTokens(user, ip, userAgent);
-	}
+      const isMatch = await verify(user.password, dto.password);
+      if (!isMatch) throw new BadRequestException("Invalid credentials");
 
-	async oauthLogin(profile: OAuthDto, ip: string, userAgent?: string) {
-		const { email, provider, providerId } = profile;
+      return this.tokenService.issueTokens(user, ip, userAgent);
+    } catch (error) {
+      this.logger.error(
+        `Login failed: ${error instanceof Error ? error.message : error}`,
+      );
+      throw new UnauthorizedException("Login failed");
+    }
+  }
 
-		const existingAccount = await this.accountService.findAccount(provider, providerId);
-		if (existingAccount) return this.tokenService.issueTokens(existingAccount.user, ip, userAgent);
+  async oauthLogin(profile: OAuthDto, ip: string, userAgent?: string) {
+    try {
+      const { email, provider, providerId } = profile;
 
-		let user = await this.userService.findByEmail(email);
-		if (!user) {
-			user = await this.userService.createOAuth(profile);
-		} else {
-			await this.accountService.create({
-				provider,
-				providerId,
-				userId: user.id,
-			});
-		}
+      const existingAccount = await this.accountService.findAccount(
+        provider,
+        providerId,
+      );
+      if (existingAccount)
+        return this.tokenService.issueTokens(
+          existingAccount.user,
+          ip,
+          userAgent,
+        );
 
-		return this.tokenService.issueTokens(user, ip, userAgent);
-	}
+      let user = await this.userService.findByEmail(email);
+      if (!user) {
+        user = await this.userService.createOAuth(profile);
+      } else {
+        await this.accountService.create({
+          provider,
+          providerId,
+          userId: user.id,
+        });
+      }
 
-	async handleCallback(req: Request, res: Response) {
-		const userAgent = req.headers['user-agent'] || '';
-		const result = await this.oauthLogin(req.user as OAuthUser, req.ip as string, userAgent);
-		const clientUrl = this.configService.getOrThrow<string>('CLIENT_URL');
+      return this.tokenService.issueTokens(user, ip, userAgent);
+    } catch (error) {
+      this.logger.error(
+        `OAuth login failed: ${error instanceof Error ? error.message : error}`,
+      );
+      throw new UnauthorizedException("OAuth login failed");
+    }
+  }
 
-		this.cookieService.setCookies(res, result.accessToken, result.refreshToken);
+  async logout(req: Request) {
+    try {
+      const refreshToken = req.cookies?.["refreshToken"] as string | undefined;
+      if (!refreshToken)
+        throw new UnauthorizedException("Refresh token missing");
 
-		return res.redirect(`${clientUrl}/callback`);
-	}
+      const session = await this.sessionService.findByToken(refreshToken);
+      if (!session) throw new UnauthorizedException("Invalid refresh token");
 
-	async logout(req: Request) {
-		const refreshToken = req.cookies['refreshToken'];
-		if (!refreshToken) throw new UnauthorizedException('Refresh token missing');
+      await this.sessionService.revoke(session.id);
+    } catch (error) {
+      this.logger.error(
+        `Logout failed: ${error instanceof Error ? error.message : error}`,
+      );
+      throw new UnauthorizedException("Logout failed");
+    }
+  }
 
-		const session = await this.sessionService.findByToken(refreshToken);
-		if (!session) throw new UnauthorizedException('Invalid refresh token');
+  async refresh(refreshToken: string, ip: string, userAgent: string) {
+    const session = await this.sessionService.findByToken(refreshToken);
+    if (!session || session.revokedAt || session.expiresAt < new Date())
+      throw new UnauthorizedException("Invalid or expired session");
 
-		await this.sessionService.revoke(session.id);
-	}
+    await this.sessionService.delete(session.userId, session.id);
 
-	async refresh(req: Request, res: Response) {
-		const refreshToken = req.cookies['refreshToken'];
-		if (!refreshToken) throw new UnauthorizedException('Refresh token missing');
+    const user = await this.userService.findById(session.userId);
+    if (!user || !user.isActive)
+      throw new UnauthorizedException("User is not available");
 
-		const session = await this.sessionService.findByToken(refreshToken);
-		if (!session || session.revokedAt || session.expiresAt < new Date()) {
-			this.cookieService.clearCookies(res);
-			throw new UnauthorizedException('Invalid or expired session');
-		}
+    const {
+      user: sanitizedUser,
+      accessToken,
+      refreshToken: newRefreshToken,
+    } = await this.tokenService.issueTokens(user, ip, userAgent);
 
-		await this.sessionService.delete(session.userId, session.id);
-
-		const ip = req.ip || session.ip || 'unknown';
-		const userAgent = req.headers['user-agent'] || session.userAgent || 'unknown';
-
-		const user = await this.userService.findById(session.userId);
-		if (!user || !user.isActive) {
-			this.cookieService.clearCookies(res);
-			throw new UnauthorizedException('User is not available');
-		}
-
-		const { accessToken, refreshToken: newRefreshToken } = await this.tokenService.issueTokens(
-			user,
-			ip,
-			userAgent,
-		);
-
-		this.cookieService.setCookies(res, accessToken, newRefreshToken);
-
-		return {
-			user: session.user,
-			accessToken,
-			refreshToken: newRefreshToken,
-		};
-	}
+    return {
+      user: sanitizedUser,
+      accessToken,
+      refreshToken: newRefreshToken,
+    };
+  }
 }
