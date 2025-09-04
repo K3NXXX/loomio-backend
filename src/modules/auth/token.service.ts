@@ -30,7 +30,7 @@ export class TokenService {
 
 	async createAccessToken(userId: string): Promise<string> {
 		return this.jwt.signAsync(
-			{ sub: userId },
+			{ id: userId },
 			{
 				expiresIn: this.configService.get<string>('JWT_ACCESS_EXPIRES_IN'),
 				subject: userId,
