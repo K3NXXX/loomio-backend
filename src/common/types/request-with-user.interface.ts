@@ -1,5 +1,5 @@
-import { User } from "@prisma/client";
+import { User } from '@prisma/client';
 
 export interface RequestWithUser extends Request {
-  user: User;
+	user: User;
 }

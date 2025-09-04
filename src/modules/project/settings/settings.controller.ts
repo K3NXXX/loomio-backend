@@ -1,35 +1,31 @@
-import { Body, Controller, Get, Param, Patch } from "@nestjs/common";
+import { Body, Controller, Get, Param, Patch } from '@nestjs/common';
 
-import { Authorization } from "@/common/decorators/auth.decorators";
-import { CurrentUser } from "@/common/decorators/user.decorator";
+import { Authorization } from '@/common/decorators/auth.decorators';
+import { CurrentUser } from '@/common/decorators/user.decorator';
 
-import { MembersService } from "../members/members.service";
-
-import { UpdateSettingsDto } from "./dto/update.dto";
-import { SettingsService } from "./settings.service";
+import { MembersService } from '../members/members.service';
+import { UpdateSettingsDto } from './dto/update.dto';
+import { SettingsService } from './settings.service';
 
 @Authorization()
-@Controller("settings")
+@Controller('settings')
 export class SettingsController {
-  constructor(
-    private readonly settingsService: SettingsService,
-    private readonly memberService: MembersService,
-  ) {}
+	constructor(
+		private readonly settingsService: SettingsService,
+		private readonly memberService: MembersService,
+	) {}
 
-  @Get()
-  async getSettings(
-    @CurrentUser("id") userId: string,
-    @Param("projectId") projectId: string,
-  ) {
-    return this.settingsService.getByProjectId(projectId);
-  }
+	@Get()
+	async getSettings(@CurrentUser('id') userId: string, @Param('projectId') projectId: string) {
+		return this.settingsService.getByProjectId(projectId);
+	}
 
-  @Patch()
-  async updateSettings(
-    @Param("projectId") projectId: string,
-    @CurrentUser("id") userId: string,
-    @Body() dto: UpdateSettingsDto,
-  ) {
-    return this.settingsService.update(projectId, dto);
-  }
+	@Patch()
+	async updateSettings(
+		@Param('projectId') projectId: string,
+		@CurrentUser('id') userId: string,
+		@Body() dto: UpdateSettingsDto,
+	) {
+		return this.settingsService.update(projectId, dto);
+	}
 }

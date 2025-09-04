@@ -1,7 +1,7 @@
-import { User } from "@prisma/client";
+import { User } from '@prisma/client';
 
 export interface TokenPair {
-  user: Omit<User, "password">;
-  accessToken: string;
-  refreshToken: string;
+	user: Omit<User, 'password'>;
+	accessToken: string;
+	refreshToken: string;
 }

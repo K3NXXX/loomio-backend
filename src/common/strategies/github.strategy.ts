@@ -1,45 +1,41 @@
-import { Injectable } from "@nestjs/common";
-import { PassportStrategy } from "@nestjs/passport";
-import { Profile, Strategy, StrategyOptions } from "passport-github2";
-import { VerifyCallback } from "passport-oauth2";
+import { Injectable } from '@nestjs/common';
+import { PassportStrategy } from '@nestjs/passport';
+import { Profile, Strategy, StrategyOptions } from 'passport-github2';
+import type { VerifyCallback } from 'passport-oauth2';
 
 @Injectable()
-export class GithubStrategy extends PassportStrategy(Strategy, "github") {
-  constructor() {
-    const options: StrategyOptions = {
-      clientID: process.env.GITHUB_CLIENT_ID ?? "",
-      clientSecret: process.env.GITHUB_CLIENT_SECRET ?? "",
-      callbackURL: process.env.GITHUB_CALLBACK_URL ?? "",
-      scope: ["user:email"],
-    };
+export class GithubStrategy extends PassportStrategy(Strategy, 'github') {
+	constructor() {
+		const options: StrategyOptions = {
+			clientID: process.env.GITHUB_CLIENT_ID ?? '',
+			clientSecret: process.env.GITHUB_CLIENT_SECRET ?? '',
+			callbackURL: process.env.GITHUB_CALLBACK_URL ?? '',
+			scope: ['user:email'],
+		};
 
-    super(options);
-  }
+		super(options);
+	}
 
-  validate(
-    accessToken: string,
-    refreshToken: string,
-    profile: Profile,
-    done: VerifyCallback,
-  ): void {
-    const email =
-      profile.emails?.[0]?.value ||
-      `${profile.username}@users.noreply.github.com`;
+	validate(
+		accessToken: string,
+		refreshToken: string,
+		profile: Profile,
+		done: VerifyCallback,
+	): void {
+		const email = profile.emails?.[0]?.value || `${profile.username}@users.noreply.github.com`;
 
-    const name =
-      typeof profile.displayName === "string"
-        ? profile.displayName.trim()
-        : profile.username;
+		const name =
+			typeof profile.displayName === 'string' ? profile.displayName.trim() : profile.username;
 
-    const user = {
-      provider: "github",
-      providerId: profile.id,
-      email,
-      name,
-      username: profile.username,
-      avatarUrl: profile.photos?.[0]?.value ?? null,
-    };
+		const user = {
+			provider: 'github',
+			providerId: profile.id,
+			email,
+			name,
+			username: profile.username,
+			avatarUrl: profile.photos?.[0]?.value ?? null,
+		};
 
-    done(null, user);
-  }
+		done(null, user);
+	}
 }

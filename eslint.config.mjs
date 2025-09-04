@@ -1,6 +1,6 @@
 import eslint from '@eslint/js';
 import importPlugin from 'eslint-plugin-import';
-import prettierPlugin from 'eslint-plugin-prettier';
+import simpleImportSort from 'eslint-plugin-simple-import-sort';
 import globals from 'globals';
 import tseslint from 'typescript-eslint';
 
@@ -13,7 +13,7 @@ export default tseslint.config(
 	{
 		plugins: {
 			import: importPlugin,
-			prettier: prettierPlugin,
+			'simple-import-sort': simpleImportSort,
 		},
 		languageOptions: {
 			globals: {
@@ -21,7 +21,7 @@ export default tseslint.config(
 				...globals.jest,
 			},
 			parserOptions: {
-				project: true,
+				project: ['./tsconfig.json'],
 				tsconfigRootDir: import.meta.dirname,
 			},
 			sourceType: 'commonjs',
@@ -39,20 +39,16 @@ export default tseslint.config(
 			'@typescript-eslint/no-unsafe-argument': 'warn',
 			'@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
 
-			'import/order': [
+			'simple-import-sort/imports': 'error',
+			'simple-import-sort/exports': 'error',
+
+			'import/no-unresolved': 'error',
+			'import/no-extraneous-dependencies': [
 				'error',
 				{
-					groups: ['builtin', 'external', 'internal', 'parent', 'sibling', 'index'],
-					'newlines-between': 'always',
-					alphabetize: {
-						order: 'asc',
-						caseInsensitive: true,
-					},
+					devDependencies: ['**/*.test.ts', '**/*.spec.ts', '**/tests/**'],
 				},
 			],
-			'import/no-unresolved': 'error',
-
-			'prettier/prettier': 'error',
 		},
 	},
 );

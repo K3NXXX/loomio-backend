@@ -7,7 +7,7 @@
 	"license": "UNLICENSED",
 	"scripts": {
 		"build": "nest build",
-		"format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
+		"format": "prettier --write \"src/**/*.ts\"",
 		"start": "nest start",
 		"dev": "nest start --watch",
 		"start:debug": "nest start --debug --watch",
@@ -36,6 +36,7 @@
 		"class-validator": "^0.14.2",
 		"cloudinary": "^2.7.0",
 		"cookie-parser": "^1.4.7",
+		"eslint-plugin-simple-import-sort": "^12.1.1",
 		"global": "^4.4.0",
 		"helmet": "^8.1.0",
 		"lodash": "^4.17.21",

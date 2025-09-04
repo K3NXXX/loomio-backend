@@ -1,7 +1,7 @@
-import { UseGuards } from "@nestjs/common";
+import { UseGuards } from '@nestjs/common';
 
-import { RateLimitGuard } from "../guards/rate-limit.guard";
+import { RateLimitGuard } from '../guards/rate-limit.guard';
 
 export function RateLimit(points: number, duration: number) {
-  return UseGuards(RateLimitGuard(points, duration));
+	return UseGuards(RateLimitGuard(points, duration));
 }

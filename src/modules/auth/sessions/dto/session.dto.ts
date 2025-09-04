@@ -1,17 +1,17 @@
-import { IsDate, IsNotEmpty, IsOptional, IsString } from "class-validator";
+import { IsDate, IsNotEmpty, IsOptional, IsString } from 'class-validator';
 
 export class SessionDto {
-  @IsString()
-  @IsNotEmpty()
-  userId: string;
+	@IsString()
+	@IsNotEmpty()
+	userId: string;
 
-  @IsString()
-  ip: string;
+	@IsString()
+	ip: string;
 
-  @IsString()
-  @IsOptional()
-  userAgent?: string;
+	@IsString()
+	@IsOptional()
+	userAgent?: string;
 
-  @IsDate()
-  expiresAt: Date;
+	@IsDate()
+	expiresAt: Date;
 }
