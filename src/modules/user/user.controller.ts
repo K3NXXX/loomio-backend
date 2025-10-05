@@ -24,6 +24,7 @@ import { SessionService } from '../auth/sessions/sessions.service';
 import { InviteService } from '../project/invites/invite.service';
 import { SearchUsersDto } from './dto/search-users.dto';
 import { UpdateThemeDto } from './dto/theme.dto';
+import { UpdateAccountDto } from './dto/update-account.dto';
 import { UserService } from './user.service';
 
 @Authorization()
@@ -84,6 +85,11 @@ export class UserController {
 		this.cookieService.setThemeCookie(res, user.theme);
 
 		res.json({ message: 'Theme updated', theme: user.theme });
+	}
+
+	@Patch('update')
+	async updateAccount(@CurrentUser('id') userId: string, @Body() dto: UpdateAccountDto) {
+		return this.userService.updateAccount(userId, dto);
 	}
 
 	@Patch('update/avatar')

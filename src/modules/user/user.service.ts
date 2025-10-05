@@ -4,6 +4,7 @@ import {
 	Injectable,
 	InternalServerErrorException,
 	NotFoundException,
+	UnauthorizedException,
 } from '@nestjs/common';
 import { Prisma, User } from '@prisma/client';
 import { argon2id, hash, verify } from 'argon2';
@@ -16,6 +17,7 @@ import { SignupDto } from '../auth/dto/auth.dto';
 import { OAuthDto } from '../auth/dto/oauth.dto';
 import { SearchUsersDto } from './dto/search-users.dto';
 import { UpdateThemeDto } from './dto/theme.dto';
+import { UpdateAccountDto } from './dto/update-account.dto';
 
 @Injectable()
 export class UserService {
@@ -103,6 +105,7 @@ export class UserService {
 				avatarUrl: true,
 				isActive: true,
 				theme: true,
+				bio: true,
 			},
 		});
 	}
@@ -266,5 +269,55 @@ export class UserService {
 		if (!available) throw new ConflictException('Unable to generate a unique username');
 
 		return available;
+	}
+
+	async updateAccount(userId: string, dto: UpdateAccountDto) {
+		const user = await this.prisma.user.findUnique({ where: { id: userId } });
+		if (!user) throw new NotFoundException('User not found');
+
+		const { currentPassword, newPassword, ...rest } = dto;
+
+		if (rest.email || newPassword) {
+			{
+				if (!currentPassword) {
+					throw new UnauthorizedException('Current password is required');
+				}
+
+				if (!user.password) {
+					throw new UnauthorizedException('Password authentication not available for this account');
+				}
+
+				const isPasswordValid = await verify(user.password, currentPassword);
+				if (!isPasswordValid) {
+					throw new UnauthorizedException('Incorrect current password');
+				}
+			}
+
+			let passwordHash: string | undefined;
+			if (newPassword) {
+				if (newPassword === currentPassword) {
+					throw new BadRequestException('New password must be different from current password');
+				}
+				passwordHash = await hash(newPassword);
+			}
+
+			const updatedUser = await this.prisma.user.update({
+				where: { id: userId },
+				data: {
+					...rest,
+					...(passwordHash ? { password: passwordHash } : {}),
+				},
+				select: {
+					id: true,
+					name: true,
+					email: true,
+					bio: true,
+					avatarUrl: true,
+					createdAt: true,
+				},
+			});
+
+			return updatedUser;
+		}
 	}
 }

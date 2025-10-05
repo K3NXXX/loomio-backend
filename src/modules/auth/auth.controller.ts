@@ -45,7 +45,7 @@ export class AuthController {
 
 	private logger = new Logger(AuthController.name);
 
-	@RateLimit(3, 300)
+	// @RateLimit(3, 300)
 	@Post('register')
 	async register(@Body() dto: SignupDto) {
 		const response = await this.authService.register(dto);

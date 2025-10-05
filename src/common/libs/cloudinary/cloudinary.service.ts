@@ -19,7 +19,7 @@ export class CloudinaryService {
 			const result = await new Promise<UploadApiResponse>((resolve, reject) => {
 				const uploadStream = this.cloudinary.uploader.upload_stream(
 					{
-						upload_preset: 'nextgen',
+						folder: 'avatars',
 						...options,
 					},
 					(error: UploadApiErrorResponse | undefined, result: UploadApiResponse | undefined) => {

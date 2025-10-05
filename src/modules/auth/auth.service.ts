@@ -36,11 +36,20 @@ export class AuthService {
 				this.userService.findByUsername(dto.username),
 			]);
 
-			if (existingEmail) throw new ConflictException('User with this email already exists');
-			if (existingUsername) throw new ConflictException('User with this username already exists');
+			if (existingEmail) {
+				throw new ConflictException('User with this email already exists');
+			}
+
+			if (existingUsername) {
+				throw new ConflictException('User with this username already exists');
+			}
 
 			return this.verificationService.sendVerificationCode(dto);
 		} catch (error) {
+			if (error instanceof ConflictException) {
+				throw error;
+			}
+
 			this.logger.error(`Registration failed: ${error instanceof Error ? error.message : error}`);
 			throw new BadRequestException('Registration failed');
 		}
