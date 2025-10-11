@@ -6,14 +6,12 @@ import {
 	Get,
 	Param,
 	Patch,
-	Post,
 	Query,
 	Res,
 	UploadedFile,
 	UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { User } from '@prisma/client';
 import type { Response } from 'express';
 
 import { Authorization } from '@/common/decorators/auth.decorators';
@@ -21,7 +19,6 @@ import { CurrentUser } from '@/common/decorators/user.decorator';
 
 import { CookieService } from '../auth/cookie.service';
 import { SessionService } from '../auth/sessions/sessions.service';
-import { InviteService } from '../project/invites/invite.service';
 import { SearchUsersDto } from './dto/search-users.dto';
 import { UpdateThemeDto } from './dto/theme.dto';
 import { UpdateAccountDto } from './dto/update-account.dto';
@@ -33,7 +30,6 @@ export class UserController {
 	constructor(
 		private readonly userService: UserService,
 		private readonly sessionService: SessionService,
-		private readonly inviteService: InviteService,
 		private readonly cookieService: CookieService,
 	) {}
 
@@ -57,21 +53,6 @@ export class UserController {
 	async deleteSession(@CurrentUser('id') userId: string, @Param('id') id: string) {
 		await this.sessionService.delete(userId, id);
 		return { message: 'Session deleted' };
-	}
-
-	@Get('invites')
-	async getMyInvites(@CurrentUser() user: User) {
-		return this.inviteService.findUserInvites(user.id, user.email);
-	}
-
-	@Post('invites/:inviteToken/accept')
-	async acceptInvite(@CurrentUser('id') userId: string, @Param('inviteToken') token: string) {
-		return this.inviteService.acceptInvite(userId, token);
-	}
-
-	@Patch('invites/:inviteId/decline')
-	async declineInvite(@CurrentUser('id') userId: string, @Param('inviteId') inviteId: string) {
-		return this.inviteService.declineInvite(userId, inviteId);
 	}
 
 	@Patch('theme')

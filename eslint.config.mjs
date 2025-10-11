@@ -41,6 +41,9 @@ export default tseslint.config(
 
 			'simple-import-sort/imports': 'error',
 			'simple-import-sort/exports': 'error',
+			'@typescript-eslint/no-unsafe-assignment': 'off',
+			'@typescript-eslint/no-unsafe-call': "off",
+			"@typescript-eslint/no-unsafe-member-access": "off",
 
 			'import/no-unresolved': 'error',
 			'import/no-extraneous-dependencies': [

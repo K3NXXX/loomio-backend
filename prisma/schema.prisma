@@ -15,6 +15,8 @@ model User {
   email    String  @unique @db.VarChar(255)
   password String? @db.VarChar(255)
 
+  videos Video[]
+
   avatarUrl      String? @map("avatar_url")
   avatarPublicId String? @map("avatar_public_id")
 
@@ -27,24 +29,35 @@ model User {
   accounts Account[]
   sessions Session[]
 
-  projects        Project[]
-  projectMembers  ProjectMember[]
-  tasks           Task[]
-  invitesSent     ProjectInvite[]  @relation("InvitedBy")
-  invitesReceived ProjectInvite[]  @relation("InvitedUser")
-  activities      ActivityLog[]
-  notifications   Notification[]
-  comments        Comment[]
-  files           FileAttachment[]
+  following Follows[] @relation("following")
+  followers Follows[] @relation("followers")
 
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  createdAt    DateTime       @default(now()) @map("created_at")
+  updatedAt    DateTime       @updatedAt @map("updated_at")
+  VideoLike    VideoLike[]
+  VideoView    VideoView[]
+  VideoComment VideoComment[]
 
   @@index([email])
   @@index([username])
   @@index([isActive])
   @@index([role])
   @@map("users")
+}
+
+model Follows {
+  id String @id @default(uuid())
+
+  follower   User   @relation("following", fields: [followerId], references: [id])
+  followerId String
+
+  following   User   @relation("followers", fields: [followingId], references: [id])
+  followingId String
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@unique([followerId, followingId])
+  @@map("follows")
 }
 
 model Account {
@@ -96,240 +109,103 @@ model Session {
   @@map("sessions")
 }
 
-model Project {
-  id          String  @id @default(uuid())
-  name        String  @db.VarChar(100)
-  description String? @db.Text
-  color       String? @db.VarChar(20)
+model Video {
+  id            String      @id @default(uuid())
+  title         String      @db.VarChar(200)
+  description   String?     @db.Text
+  tags          String?     @db.VarChar(500)
+  visibility    Visibility
+  audience      Audience
+  publishType   PublishType
+  publishDate   DateTime?
+  videoFile     String      @db.VarChar(255)
+  thumbnailFile String      @db.VarChar(255)
 
-  ownerId String @map("owner_id")
-  owner   User   @relation(fields: [ownerId], references: [id], onDelete: Cascade)
-
-  settings ProjectSettings?
-
-  members    ProjectMember[]
-  tasks      Task[]
-  tags       ProjectTag[]
-  invites    ProjectInvite[]
-  activities ActivityLog[]
-
-  isArchived Boolean @default(false) @map("is_archived")
-  isPrivate  Boolean @default(true) @map("is_private")
-
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
-
-  @@index([ownerId])
-  @@map("projects")
-}
-
-model ProjectSettings {
-  id              String  @id @default(uuid())
-  defaultView     String? @default("list")
-  notificationsOn Boolean @default(true)
-  archivedVisible Boolean @default(false)
-  integrationJson Json?
-
-  projectId String  @unique
-  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
-
-  @@map("project_settings")
-}
-
-model ProjectMember {
-  id String @id @default(uuid())
-
-  userId    String @map("user_id")
-  projectId String @map("project_id")
-
-  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
-
-  role MemberRole @default(VIEWER)
-
-  joinedAt DateTime @default(now()) @map("joined_at")
-
-  @@unique([userId, projectId])
-  @@index([projectId])
-  @@map("project_members")
-}
-
-model ProjectInvite {
-  id          String  @id @default(uuid())
-  projectId   String  @map("project_id")
-  email       String? @db.VarChar(255)
-  userId      String?
-  invitedById String  @map("invited_by_id")
-
-  role       MemberRole   @default(VIEWER)
-  token      String       @unique
-  expiresAt  DateTime     @map("expires_at")
-  acceptedAt DateTime?
-  status     InviteStatus @default(PENDING)
-
-  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  invitedBy User    @relation("InvitedBy", fields: [invitedById], references: [id])
-  user      User?   @relation("InvitedUser", fields: [userId], references: [id])
-
-  createdAt DateTime @default(now()) @map("created_at")
-
-  @@unique([email, projectId])
-  @@unique([userId, projectId])
-  @@index([projectId])
-  @@map("project_invites")
-}
-
-model ProjectTag {
-  id          String  @id @default(uuid())
-  name        String  @db.VarChar(30)
-  color       String? @db.VarChar(20)
-  description String?
-
-  projectId String  @map("project_id")
-  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
-
-  tasks TaskTag[]
-
-  @@unique([name, projectId])
-  @@map("project_tags")
-}
-
-model Task {
-  id          String       @id @default(uuid())
-  title       String       @db.VarChar(150)
-  description String?      @db.Text
-  status      TaskStatus   @default(TODO)
-  priority    TaskPriority @default(MEDIUM)
-  order       Int?
-
-  projectId String  @map("project_id")
-  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
-
-  assignedToId String? @map("assigned_to_id")
-  assignedTo   User?   @relation(fields: [assignedToId], references: [id], onDelete: SetNull)
-
-  dueDate     DateTime? @map("due_date")
-  completedAt DateTime? @map("completed_at")
-
-  tags       TaskTag[]
-  comments   Comment[]
-  activities ActivityLog[]
-  file       FileAttachment[]
-
-  blockedBy TaskDependency[] @relation("BlockedTasks")
-  blocks    TaskDependency[] @relation("BlockerTasks")
-
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
-
-  @@unique([title, projectId])
-  @@index([projectId, status])
-  @@index([dueDate])
-  @@index([completedAt])
-  @@map("tasks")
-}
-
-model TaskDependency {
-  blockerId String @map("blocker_id")
-  blockedId String @map("blocked_id")
-
-  blocker Task @relation("BlockerTasks", fields: [blockerId], references: [id], onDelete: Cascade)
-  blocked Task @relation("BlockedTasks", fields: [blockedId], references: [id], onDelete: Cascade)
-
-  @@id([blockerId, blockedId])
-  @@map("task_dependencies")
-}
-
-model TaskTag {
-  taskId String @map("task_id")
-  tagId  String @map("tag_id")
-
-  task Task       @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  tag  ProjectTag @relation(fields: [tagId], references: [id], onDelete: Cascade)
-
-  @@id([taskId, tagId])
-  @@map("task_tags")
-}
-
-model Comment {
-  id       String @id @default(uuid())
-  body     String @db.Text
-  authorId String @map("author_id")
-  taskId   String @map("task_id")
-
-  author User             @relation(fields: [authorId], references: [id], onDelete: Cascade)
-  task   Task             @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  file   FileAttachment[]
-
-  createdAt DateTime @default(now()) @map("created_at")
-
-  @@index([taskId])
-  @@map("comments")
-}
-
-model FileAttachment {
-  id       String  @id @default(uuid())
-  name     String  @db.VarChar(255)
-  url      String  @db.Text
-  publicId String?
-  sizeKb   Int?
-  mimeType String? @map("mime_type")
-
-  taskId String? @map("task_id")
-  task   Task?   @relation(fields: [taskId], references: [id], onDelete: Cascade)
-
-  commentId String?  @map("comment_id")
-  comment   Comment? @relation(fields: [commentId], references: [id], onDelete: Cascade)
-
-  uploadedById String @map("uploaded_by_id")
-  uploadedBy   User   @relation(fields: [uploadedById], references: [id])
-
-  createdAt DateTime @default(now()) @map("created_at")
-
-  @@index([taskId])
-  @@index([commentId])
-  @@map("file_attachments")
-}
-
-model Notification {
-  id      String  @id @default(uuid())
-  type    String
-  message String
-  read    Boolean @default(false)
-
-  taskId    String? @map("task_id")
-  projectId String? @map("project_id")
-  commentId String? @map("comment_id")
-
-  userId String @map("user_id")
+  userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  createdAt DateTime @default(now()) @map("created_at")
+  likes    VideoLike[]
+  views    VideoView[]
+  comments VideoComment[]
 
-  @@index([userId, read])
-  @@map("notifications")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([visibility])
+  @@index([publishType])
+  @@map("videos")
 }
 
-model ActivityLog {
-  id        String  @id @default(uuid())
-  type      String
-  metadata  Json?
-  userId    String  @map("user_id")
-  projectId String? @map("project_id")
-  taskId    String? @map("task_id")
+model VideoLike {
+  id     String @id @default(uuid())
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String
 
-  user    User     @relation(fields: [userId], references: [id])
-  project Project? @relation(fields: [projectId], references: [id])
-  task    Task?    @relation(fields: [taskId], references: [id])
+  video   Video  @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  videoId String
 
-  createdAt DateTime @default(now()) @map("created_at")
+  createdAt DateTime @default(now())
 
-  @@index([type])
-  @@index([projectId])
-  @@map("activity_logs")
+  @@unique([userId, videoId])
+  @@index([videoId])
+  @@map("video_likes")
 }
 
-// ENUMS
+model VideoView {
+  id      String @id @default(uuid())
+  video   Video  @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  videoId String
+
+  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+  userId String?
+
+  ipAddress String? @map("ip_address")
+  userAgent String? @map("user_agent")
+
+  createdAt DateTime @default(now())
+
+  @@index([videoId])
+  @@index([userId])
+  @@map("video_views")
+}
+
+model VideoComment {
+  id      String @id @default(uuid())
+  content String @db.Text
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String
+
+  video   Video  @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  videoId String
+
+  parent   VideoComment?  @relation("CommentReplies", fields: [parentId], references: [id], onDelete: Cascade)
+  parentId String?
+  replies  VideoComment[] @relation("CommentReplies")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([videoId])
+  @@index([userId])
+  @@map("video_comments")
+}
+
+enum Visibility {
+  public
+  private
+}
+
+enum Audience {
+  yes
+  no
+}
+
+enum PublishType {
+  now
+  scheduled
+}
 
 enum UserRole {
   USER
