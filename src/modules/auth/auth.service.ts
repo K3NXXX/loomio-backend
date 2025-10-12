@@ -9,6 +9,7 @@ import {
 import { verify } from 'argon2';
 import type { Request } from 'express';
 
+import { JwtService } from '@nestjs/jwt';
 import { AccountService } from '../account/account.service';
 import { VerificationService } from '../email/verification/verification.service';
 import { UserService } from '../user/user.service';
@@ -25,6 +26,7 @@ export class AuthService {
 		private readonly accountService: AccountService,
 		private readonly verificationService: VerificationService,
 		private readonly tokenService: TokenService,
+		private readonly jwtService: JwtService,
 	) {}
 
 	private logger = new Logger(AccountService.name);
