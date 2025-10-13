@@ -1,0 +1,33 @@
+import { Authorization } from '@/common/decorators/auth.decorators';
+import { CurrentUser } from '@/common/decorators/user.decorator';
+import { Controller, Get, Param, Post } from '@nestjs/common';
+import { FollowService } from './follow.service';
+
+@Controller("follow")
+export class FollowController {
+	constructor(private readonly followService: FollowService) {}
+
+	@Authorization()
+	@Post(':followingId')
+	toggleFollow(@CurrentUser('id') followerId: string, @Param('followingId') followingId: string) {
+		return this.followService.toggleFollow(followerId, followingId);
+	}
+
+	// @Authorization()
+	// @Get('followers/:userId')
+	// getUserFollowers(@CurrentUser('id') currentUserId: string, @Param('userId') userId: string) {
+	// 	return this.followService.getUserFollowers(userId, currentUserId);
+	// }
+
+	// @Authorization()
+	// @Get('following/:userId')
+	// getUserFollowing(@CurrentUser('id') currentUserId: string, @Param('userId') userId: string) {
+	// 	return this.followService.getUserFollowing(userId, currentUserId);
+	// }
+
+	@Authorization()
+	@Get('is-following/:followingId')
+	isFollowing(@CurrentUser('id') userId: string, @Param('followingId') followingId: string) {
+		return this.followService.isFollowing(userId, followingId);
+	}
+}

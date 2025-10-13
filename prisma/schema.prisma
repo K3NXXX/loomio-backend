@@ -145,6 +145,9 @@ model VideoLike {
   video   Video  @relation(fields: [videoId], references: [id], onDelete: Cascade)
   videoId String
 
+  isLike    Boolean @default(false) @map("is_like")
+  isDislike Boolean @default(false) @map("is_dislike")
+
   createdAt DateTime @default(now())
 
   @@unique([userId, videoId])

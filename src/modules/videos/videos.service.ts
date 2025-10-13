@@ -161,6 +161,14 @@ export class VideosService {
 			throw new NotFoundException('Video not found or is private');
 		}
 
-		return video;
+		const likes = await this.prisma.videoLike.count({
+			where: { videoId: id, isLike: true },
+		});
+		const dislikes = await this.prisma.videoLike.count({
+			where: { videoId: id, isDislike: true },
+		});
+
+		return { ...video, _count: { ...video._count, likes, dislikes } };
+
 	}
 }
