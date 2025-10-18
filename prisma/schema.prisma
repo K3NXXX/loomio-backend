@@ -32,11 +32,12 @@ model User {
   following Follows[] @relation("following")
   followers Follows[] @relation("followers")
 
-  createdAt    DateTime       @default(now()) @map("created_at")
-  updatedAt    DateTime       @updatedAt @map("updated_at")
-  VideoLike    VideoLike[]
-  VideoView    VideoView[]
-  VideoComment VideoComment[]
+  createdAt        DateTime           @default(now()) @map("created_at")
+  updatedAt        DateTime           @updatedAt @map("updated_at")
+  VideoLike        VideoLike[]
+  VideoView        VideoView[]
+  VideoComment     VideoComment[]
+  VideoCommentLike VideoCommentReaction[]
 
   @@index([email])
   @@index([username])
@@ -187,12 +188,28 @@ model VideoComment {
   parentId String?
   replies  VideoComment[] @relation("CommentReplies")
 
+  reactions VideoCommentReaction[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([videoId])
   @@index([userId])
   @@map("video_comments")
+}
+
+model VideoCommentReaction {
+  id        String       @id @default(uuid())
+  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+  comment   VideoComment @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  commentId String
+  type      ReactionType
+  createdAt DateTime     @default(now())
+
+  @@unique([userId, commentId])
+  @@index([commentId])
+  @@map("video_comment_reactions")
 }
 
 enum Visibility {
@@ -232,30 +249,7 @@ enum ThemeColors {
   WHITE
 }
 
-enum MemberRole {
-  OWNER
-  ADMIN
-  MEMBER
-  VIEWER
-}
-
-enum TaskStatus {
-  TODO
-  IN_PROGRESS
-  DONE
-  BLOCKED
-  ARCHIVED
-}
-
-enum TaskPriority {
-  LOW
-  MEDIUM
-  HIGH
-  URGENT
-}
-
-enum InviteStatus {
-  PENDING
-  ACCEPTED
-  DECLINED
+enum ReactionType {
+  LIKE
+  DISLIKE
 }

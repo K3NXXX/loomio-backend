@@ -5,6 +5,7 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AccountModule } from './modules/account/account.module';
 import { AuthModule } from './modules/auth/auth.module';
+import { CommentModule } from './modules/comment/comment.module';
 import { FollowModule } from './modules/follow/follow.module';
 import { LikeModule } from './modules/like/like.module';
 import { UserModule } from './modules/user/user.module';
@@ -19,6 +20,7 @@ import { VideosModule } from './modules/videos/videos.module';
 		VideosModule,
 		FollowModule,
 		LikeModule,
+		CommentModule,
 	],
 	controllers: [AppController],
 	providers: [AppService],
