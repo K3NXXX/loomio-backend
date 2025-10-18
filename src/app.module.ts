@@ -10,6 +10,7 @@ import { FollowModule } from './modules/follow/follow.module';
 import { LikeModule } from './modules/like/like.module';
 import { UserModule } from './modules/user/user.module';
 import { VideosModule } from './modules/videos/videos.module';
+import { ViewModule } from './modules/view/view.module';
 
 @Module({
 	imports: [
@@ -21,6 +22,7 @@ import { VideosModule } from './modules/videos/videos.module';
 		FollowModule,
 		LikeModule,
 		CommentModule,
+		ViewModule,
 	],
 	controllers: [AppController],
 	providers: [AppService],

@@ -164,7 +164,7 @@ model VideoView {
   user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
   userId String?
 
-  ipAddress String? @map("ip_address")
+  ip String? @map("ip_address")
   userAgent String? @map("user_agent")
 
   createdAt DateTime @default(now())
