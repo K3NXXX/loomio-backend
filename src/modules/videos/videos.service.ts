@@ -85,6 +85,11 @@ export class VideosService {
 						avatarUrl: true,
 					},
 				},
+				_count: {
+					select: {
+						views: true
+					},
+				},
 			},
 		});
 	}
@@ -169,6 +174,5 @@ export class VideosService {
 		});
 
 		return { ...video, _count: { ...video._count, likes, dislikes } };
-
 	}
 }
