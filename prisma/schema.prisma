@@ -15,8 +15,6 @@ model User {
   email    String  @unique @db.VarChar(255)
   password String? @db.VarChar(255)
 
-  videos Video[]
-
   avatarUrl      String? @map("avatar_url")
   avatarPublicId String? @map("avatar_public_id")
 
@@ -28,16 +26,16 @@ model User {
 
   accounts Account[]
   sessions Session[]
+  channels Channel[]
 
-  following Follows[] @relation("following")
-  followers Follows[] @relation("followers")
-
-  createdAt        DateTime           @default(now()) @map("created_at")
-  updatedAt        DateTime           @updatedAt @map("updated_at")
   VideoLike        VideoLike[]
   VideoView        VideoView[]
   VideoComment     VideoComment[]
   VideoCommentLike VideoCommentReaction[]
+  ChannelFollow    ChannelFollow[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   @@index([email])
   @@index([username])
@@ -46,19 +44,145 @@ model User {
   @@map("users")
 }
 
-model Follows {
-  id String @id @default(uuid())
+model Channel {
+  id          String  @id @default(uuid())
+  name        String  @db.VarChar(50)
+  username    String  @unique @db.VarChar(20)
+  description String? @db.Text
 
-  follower   User   @relation("following", fields: [followerId], references: [id])
-  followerId String
+  avatarUrl      String? @map("avatar_url")
+  avatarPublicId String? @map("avatar_public_id")
 
-  following   User   @relation("followers", fields: [followingId], references: [id])
-  followingId String
+  isDefault Boolean @default(false) @map("is_default")
+
+  userId String @map("user_id")
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  videos    Video[]
+  followers ChannelFollow[]
 
   createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
-  @@unique([followerId, followingId])
-  @@map("follows")
+  @@index([userId])
+  @@map("channels")
+}
+
+model ChannelFollow {
+  id         String @id @default(uuid())
+  follower   User   @relation(fields: [followerId], references: [id], onDelete: Cascade)
+  followerId String
+
+  channel   Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  channelId String
+
+  createdAt DateTime @default(now())
+
+  @@unique([followerId, channelId])
+  @@index([channelId])
+  @@map("channel_follows")
+}
+
+model Video {
+  id            String      @id @default(uuid())
+  title         String      @db.VarChar(200)
+  description   String?     @db.Text
+  tags          String?     @db.VarChar(500)
+  visibility    Visibility
+  audience      Audience
+  publishType   PublishType
+  publishDate   DateTime?
+  videoFile     String      @db.VarChar(255)
+  thumbnailFile String      @db.VarChar(255)
+
+  channelId String  @map("channel_id")
+  channel   Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+
+  likes    VideoLike[]
+  views    VideoView[]
+  comments VideoComment[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([channelId])
+  @@index([visibility])
+  @@index([publishType])
+  @@map("videos")
+}
+
+model VideoLike {
+  id     String @id @default(uuid())
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String
+
+  video   Video  @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  videoId String
+
+  isLike    Boolean @default(false) @map("is_like")
+  isDislike Boolean @default(false) @map("is_dislike")
+
+  createdAt DateTime @default(now())
+
+  @@unique([userId, videoId])
+  @@index([videoId])
+  @@map("video_likes")
+}
+
+model VideoView {
+  id      String @id @default(uuid())
+  video   Video  @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  videoId String
+
+  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+  userId String?
+
+  ip        String? @map("ip_address")
+  userAgent String? @map("user_agent")
+
+  createdAt DateTime @default(now())
+
+  @@index([videoId])
+  @@index([userId])
+  @@map("video_views")
+}
+
+model VideoComment {
+  id      String @id @default(uuid())
+  content String @db.Text
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String
+
+  video   Video  @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  videoId String
+
+  parent   VideoComment?  @relation("CommentReplies", fields: [parentId], references: [id], onDelete: Cascade)
+  parentId String?
+  replies  VideoComment[] @relation("CommentReplies")
+
+  reactions VideoCommentReaction[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([videoId])
+  @@index([userId])
+  @@map("video_comments")
+}
+
+model VideoCommentReaction {
+  id        String       @id @default(uuid())
+  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+  comment   VideoComment @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  commentId String
+  type      ReactionType
+  createdAt DateTime     @default(now())
+
+  @@unique([userId, commentId])
+  @@index([commentId])
+  @@map("video_comment_reactions")
 }
 
 model Account {
@@ -108,108 +232,6 @@ model Session {
   @@index([userId])
   @@index([ip, userAgent, revoked, expiresAt])
   @@map("sessions")
-}
-
-model Video {
-  id            String      @id @default(uuid())
-  title         String      @db.VarChar(200)
-  description   String?     @db.Text
-  tags          String?     @db.VarChar(500)
-  visibility    Visibility
-  audience      Audience
-  publishType   PublishType
-  publishDate   DateTime?
-  videoFile     String      @db.VarChar(255)
-  thumbnailFile String      @db.VarChar(255)
-
-  userId String
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  likes    VideoLike[]
-  views    VideoView[]
-  comments VideoComment[]
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([userId])
-  @@index([visibility])
-  @@index([publishType])
-  @@map("videos")
-}
-
-model VideoLike {
-  id     String @id @default(uuid())
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  userId String
-
-  video   Video  @relation(fields: [videoId], references: [id], onDelete: Cascade)
-  videoId String
-
-  isLike    Boolean @default(false) @map("is_like")
-  isDislike Boolean @default(false) @map("is_dislike")
-
-  createdAt DateTime @default(now())
-
-  @@unique([userId, videoId])
-  @@index([videoId])
-  @@map("video_likes")
-}
-
-model VideoView {
-  id      String @id @default(uuid())
-  video   Video  @relation(fields: [videoId], references: [id], onDelete: Cascade)
-  videoId String
-
-  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
-  userId String?
-
-  ip String? @map("ip_address")
-  userAgent String? @map("user_agent")
-
-  createdAt DateTime @default(now())
-
-  @@index([videoId])
-  @@index([userId])
-  @@map("video_views")
-}
-
-model VideoComment {
-  id      String @id @default(uuid())
-  content String @db.Text
-
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  userId String
-
-  video   Video  @relation(fields: [videoId], references: [id], onDelete: Cascade)
-  videoId String
-
-  parent   VideoComment?  @relation("CommentReplies", fields: [parentId], references: [id], onDelete: Cascade)
-  parentId String?
-  replies  VideoComment[] @relation("CommentReplies")
-
-  reactions VideoCommentReaction[]
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([videoId])
-  @@index([userId])
-  @@map("video_comments")
-}
-
-model VideoCommentReaction {
-  id        String       @id @default(uuid())
-  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  userId    String
-  comment   VideoComment @relation(fields: [commentId], references: [id], onDelete: Cascade)
-  commentId String
-  type      ReactionType
-  createdAt DateTime     @default(now())
-
-  @@unique([userId, commentId])
-  @@index([commentId])
-  @@map("video_comment_reactions")
 }
 
 enum Visibility {

@@ -1,39 +1,39 @@
-import { PrismaService } from '@/common/prisma/prisma.service'
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { PrismaService } from '@/common/prisma/prisma.service';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 
 @Injectable()
 export class FollowService {
 	constructor(private readonly prisma: PrismaService) {}
 
-	async toggleFollow(followerId: string, followingId: string) {
-		if (followerId === followingId) throw new BadRequestException('Cannot follow yourself');
-
-		const followingUser = await this.prisma.user.findUnique({
-			where: { id: followingId },
+	async toggleFollow(followerId: string, channelId: string) {
+		const channel = await this.prisma.channel.findUnique({
+			where: { id: channelId },
+			select: { id: true, userId: true },
 		});
+		if (!channel) throw new NotFoundException('Channel not found');
 
-		if (!followingUser) throw new BadRequestException('User to follow not found');
+		if (channel.userId === followerId) {
+			throw new BadRequestException('Cannot follow your own channel');
+		}
 
-		const existing = await this.prisma.follows.findUnique({
+		const existing = await this.prisma.channelFollow.findUnique({
 			where: {
-				followerId_followingId: {
+				followerId_channelId: {
 					followerId,
-					followingId,
+					channelId,
 				},
 			},
 		});
 
 		if (existing) {
-			await this.prisma.follows.delete({
-				where: { id: existing.id },
-			});
+			await this.prisma.channelFollow.delete({ where: { id: existing.id } });
 			return { following: false };
 		}
 
-		await this.prisma.follows.create({
+		await this.prisma.channelFollow.create({
 			data: {
 				followerId,
-				followingId,
+				channelId,
 			},
 		});
 
@@ -166,12 +166,12 @@ export class FollowService {
 	// 	return follows.map((f) => f.followingId);
 	// }
 
-	async isFollowing(userId: string, followingId: string) {
-		const existing = await this.prisma.follows.findUnique({
+	async isFollowing(userId: string, channelId: string) {
+		const existing = await this.prisma.channelFollow.findUnique({
 			where: {
-				followerId_followingId: {
+				followerId_channelId: {
 					followerId: userId,
-					followingId: followingId,
+					channelId,
 				},
 			},
 		});

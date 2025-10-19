@@ -13,11 +13,8 @@ export class VideosService {
 
 	async create(
 		createVideoDto: CreateVideoDto,
-		files: {
-			file?: Express.Multer.File[];
-			thumbnail?: Express.Multer.File[];
-		},
-		userId: string,
+		files: { file?: Express.Multer.File[]; thumbnail?: Express.Multer.File[] },
+		channelId: string,
 	) {
 		const videoFile = files.file?.[0];
 		const thumbnailFile = files.thumbnail?.[0];
@@ -46,22 +43,16 @@ export class VideosService {
 					audience: createVideoDto.audience,
 					publishType: createVideoDto.publishType,
 					publishDate: createVideoDto.publishDate ? new Date(createVideoDto.publishDate) : null,
-
 					videoFile: uploadedVideo.secure_url,
 					thumbnailFile: uploadedThumbnail.secure_url,
-
-					userId,
+					channelId,
 				},
 			});
 
-			return {
-				message: '✅ Video successfully uploaded',
-				data: newVideo,
-			};
+			return { message: '✅ Video successfully uploaded', data: newVideo };
 		} catch (err: unknown) {
 			const errorMessage = err instanceof Error ? err.message : String(err);
 			console.error('❌ Video upload error:', errorMessage);
-
 			throw new InternalServerErrorException(`Failed to upload video: ${errorMessage}`);
 		}
 	}
@@ -77,29 +68,23 @@ export class VideosService {
 				thumbnailFile: true,
 				videoFile: true,
 				createdAt: true,
-				user: {
+				channel: {
 					select: {
 						id: true,
 						username: true,
 						name: true,
 						avatarUrl: true,
+						_count: { select: { followers: true } },
 					},
 				},
-				_count: {
-					select: {
-						views: true
-					},
-				},
+				_count: { select: { views: true } },
 			},
 		});
 	}
 
 	async findOne(id: string) {
 		const video = await this.prisma.video.findFirst({
-			where: {
-				id: id,
-				visibility: 'public',
-			},
+			where: { id, visibility: 'public' },
 			select: {
 				id: true,
 				title: true,
@@ -108,53 +93,35 @@ export class VideosService {
 				thumbnailFile: true,
 				createdAt: true,
 				tags: true,
-
 				_count: {
 					select: {
-						likes: true,
 						views: true,
 						comments: true,
 					},
 				},
-
-				user: {
+				channel: {
 					select: {
 						id: true,
 						username: true,
 						name: true,
 						avatarUrl: true,
-						_count: {
-							select: {
-								followers: true,
-							},
-						},
+						_count: { select: { followers: true } },
 					},
 				},
-
 				comments: {
 					select: {
 						id: true,
 						content: true,
 						createdAt: true,
 						user: {
-							select: {
-								id: true,
-								username: true,
-								avatarUrl: true,
-							},
+							select: { id: true, username: true, avatarUrl: true },
 						},
 						replies: {
 							select: {
 								id: true,
 								content: true,
 								createdAt: true,
-								user: {
-									select: {
-										id: true,
-										username: true,
-										avatarUrl: true,
-									},
-								},
+								user: { select: { id: true, username: true, avatarUrl: true } },
 							},
 						},
 					},
@@ -166,13 +133,18 @@ export class VideosService {
 			throw new NotFoundException('Video not found or is private');
 		}
 
-		const likes = await this.prisma.videoLike.count({
-			where: { videoId: id, isLike: true },
-		});
-		const dislikes = await this.prisma.videoLike.count({
-			where: { videoId: id, isDislike: true },
-		});
+		const [likes, dislikes] = await Promise.all([
+			this.prisma.videoLike.count({ where: { videoId: id, isLike: true } }),
+			this.prisma.videoLike.count({ where: { videoId: id, isDislike: true } }),
+		]);
 
-		return { ...video, _count: { ...video._count, likes, dislikes } };
+		return {
+			...video,
+			_count: {
+				...video._count,
+				likes,
+				dislikes,
+			},
+		};
 	}
 }

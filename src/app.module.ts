@@ -5,6 +5,7 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AccountModule } from './modules/account/account.module';
 import { AuthModule } from './modules/auth/auth.module';
+import { ChannelModule } from './modules/channel/channel.module';
 import { CommentModule } from './modules/comment/comment.module';
 import { FollowModule } from './modules/follow/follow.module';
 import { LikeModule } from './modules/like/like.module';
@@ -23,6 +24,7 @@ import { ViewModule } from './modules/view/view.module';
 		LikeModule,
 		CommentModule,
 		ViewModule,
+		ChannelModule,
 	],
 	controllers: [AppController],
 	providers: [AppService],
