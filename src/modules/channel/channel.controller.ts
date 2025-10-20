@@ -1,7 +1,16 @@
 import { Authorization } from '@/common/decorators/auth.decorators';
 import { CurrentUser } from '@/common/decorators/user.decorator';
 import { RequestWithUser } from '@/common/types/request-with-user.interface';
-import { Body, Controller, Get, Post, Req, UploadedFile, UseInterceptors } from '@nestjs/common';
+import {
+	Body,
+	Controller,
+	Get,
+	Param,
+	Post,
+	Req,
+	UploadedFile,
+	UseInterceptors,
+} from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ChannelService } from './channel.service';
 import { CreateChannelDto } from './dto/create-channel.dto';
@@ -11,12 +20,12 @@ export class ChannelController {
 	constructor(private readonly channelService: ChannelService) {}
 
 	@Authorization()
-	@UseInterceptors(FileInterceptor('avatar '))
+	@UseInterceptors(FileInterceptor('avatar'))
 	@Post()
 	create(
 		@Req() req: RequestWithUser,
 		@Body() dto: CreateChannelDto,
-		@UploadedFile() avatar?: Express.Multer.File, 
+		@UploadedFile() avatar?: Express.Multer.File,
 	) {
 		return this.channelService.create(req.user.id, dto, avatar);
 	}
@@ -25,6 +34,11 @@ export class ChannelController {
 	@Get('me')
 	myChannels(@CurrentUser('id') userId: string) {
 		return this.channelService.findUserChannels(userId);
+	}
+
+	@Get(':username')
+	getByUsername(@Param('username') username: string) {
+		return this.channelService.findChannelPublic(username);
 	}
 
 	//   // PUBLIC PROFILE BY USERNAME

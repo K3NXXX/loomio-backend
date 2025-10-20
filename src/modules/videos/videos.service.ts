@@ -1,6 +1,11 @@
 import { CloudinaryService } from '@/common/libs/cloudinary/cloudinary.service';
 import { PrismaService } from '@/common/prisma/prisma.service';
-import { Injectable, InternalServerErrorException, NotFoundException } from '@nestjs/common';
+import {
+	ForbiddenException,
+	Injectable,
+	InternalServerErrorException,
+	NotFoundException,
+} from '@nestjs/common';
 import { UploadApiResponse } from 'cloudinary';
 import { CreateVideoDto } from './dto/create-video.dto';
 
@@ -14,13 +19,28 @@ export class VideosService {
 	async create(
 		createVideoDto: CreateVideoDto,
 		files: { file?: Express.Multer.File[]; thumbnail?: Express.Multer.File[] },
-		channelId: string,
+		userId: string,
 	) {
 		const videoFile = files.file?.[0];
 		const thumbnailFile = files.thumbnail?.[0];
 
 		if (!videoFile || !thumbnailFile) {
 			throw new InternalServerErrorException('Video or thumbnail file missing');
+		}
+
+		const { channelId, title, description, tags, visibility, audience, publishType, publishDate } =
+			createVideoDto;
+
+		const channel = await this.prisma.channel.findUnique({
+			where: { id: channelId },
+			select: { id: true, userId: true },
+		});
+
+		if (!channel) {
+			throw new NotFoundException('Channel not found');
+		}
+		if (channel.userId !== userId) {
+			throw new ForbiddenException('You are not allowed to upload to this channel');
 		}
 
 		try {
@@ -36,13 +56,13 @@ export class VideosService {
 
 			const newVideo = await this.prisma.video.create({
 				data: {
-					title: createVideoDto.title,
-					description: createVideoDto.description,
-					tags: createVideoDto.tags,
-					visibility: createVideoDto.visibility,
-					audience: createVideoDto.audience,
-					publishType: createVideoDto.publishType,
-					publishDate: createVideoDto.publishDate ? new Date(createVideoDto.publishDate) : null,
+					title,
+					description,
+					tags,
+					visibility,
+					audience,
+					publishType,
+					publishDate: publishDate ? new Date(publishDate) : null,
 					videoFile: uploadedVideo.secure_url,
 					thumbnailFile: uploadedThumbnail.secure_url,
 					channelId,
@@ -104,6 +124,7 @@ export class VideosService {
 						id: true,
 						username: true,
 						name: true,
+						userId: true,
 						avatarUrl: true,
 						_count: { select: { followers: true } },
 					},

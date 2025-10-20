@@ -1,6 +1,11 @@
 import { CloudinaryService } from '@/common/libs/cloudinary/cloudinary.service';
 import { PrismaService } from '@/common/prisma/prisma.service';
-import { BadRequestException, Injectable, InternalServerErrorException } from '@nestjs/common';
+import {
+	BadRequestException,
+	Injectable,
+	InternalServerErrorException,
+	NotFoundException,
+} from '@nestjs/common';
 import { UploadApiResponse } from 'cloudinary';
 import { CreateChannelDto } from './dto/create-channel.dto';
 
@@ -96,6 +101,43 @@ export class ChannelService {
 				_count: { select: { videos: true, followers: true } },
 			},
 		});
+	}
+
+	async findChannelPublic(username: string) {
+		const normalized = username.replace(/^@/, '').toLowerCase();
+
+		const channel = await this.prisma.channel.findFirst({
+			where: { username: normalized },
+			select: {
+				id: true,
+				name: true,
+				username: true,
+				avatarUrl: true,
+				description: true,
+				createdAt: true,
+				userId: true,
+				_count: { select: { followers: true, videos: true } },
+				videos: {
+					select: {
+						id: true,
+						title: true,
+						description: true,
+						thumbnailFile: true,
+						videoFile: true,
+						visibility: true,
+						audience: true,
+						publishType: true,
+						publishDate: true,
+						createdAt: true,
+						_count: { select: { views: true, likes: true, comments: true } },
+					},
+					orderBy: { createdAt: 'desc' },
+				},
+			},
+		});
+
+		if (!channel) throw new NotFoundException('Channel not found');
+		return channel;
 	}
 
 	// async findPublicByUsername(username: string) {

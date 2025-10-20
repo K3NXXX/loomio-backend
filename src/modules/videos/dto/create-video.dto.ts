@@ -57,5 +57,8 @@ export class CreateVideoDto {
 	@IsString({ message: 'Publish date must be a string' })
 	@Transform(trimTransform)
 	publishDate?: string;
-}
 
+	@IsString()
+	@IsNotEmpty()
+	channelId: string; 
+}
