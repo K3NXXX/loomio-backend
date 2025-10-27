@@ -6,14 +6,41 @@ import {
 	Controller,
 	Get,
 	Param,
+	Patch,
 	Post,
 	Req,
 	UploadedFile,
+	UploadedFiles,
 	UseInterceptors,
 } from '@nestjs/common';
-import { FileInterceptor } from '@nestjs/platform-express';
+import { FileFieldsInterceptor, FileInterceptor } from '@nestjs/platform-express';
 import { ChannelService } from './channel.service';
 import { CreateChannelDto } from './dto/create-channel.dto';
+import { UpdateChannelDto } from './dto/edit-channel.dto';
+
+// Опційно: можна винести у окремий файл
+const multerOptions = {
+	// Зберігаємо у пам'яті (якщо Cloudinary приймає buffer)
+	storage: undefined,
+	fileFilter: (
+		_req: any,
+		file: Express.Multer.File,
+		cb: (error: any, acceptFile: boolean) => void,
+	) => {
+		if (!file.mimetype?.startsWith('image/')) {
+			return cb(new Error('File must be an image'), false);
+		}
+		// avatar дозволяємо лише png/gif (дзеркало фронта)
+		if (file.fieldname === 'avatar') {
+			if (!['image/png', 'image/gif'].includes(file.mimetype)) {
+				return cb(new Error('Avatar must be PNG or GIF'), false);
+			}
+		}
+		cb(null, true);
+	},
+	// Максимальний розмір на рівні Multer (6 MB — під банер)
+	limits: { fileSize: 6 * 1024 * 1024 },
+};
 
 @Controller('channel')
 export class ChannelController {
@@ -39,6 +66,29 @@ export class ChannelController {
 	@Get(':username')
 	getByUsername(@Param('username') username: string) {
 		return this.channelService.findChannelPublic(username);
+	}
+
+	@Authorization()
+	@Patch(':id')
+	@UseInterceptors(
+		FileFieldsInterceptor([
+			{ name: 'avatar', maxCount: 1 },
+			{ name: 'banner', maxCount: 1 },
+		]),
+	)
+	async update(
+		@Param('id') id: string,
+		@CurrentUser('id') userId: string,
+		@Body() dto: UpdateChannelDto,
+		@UploadedFiles()
+		files?: {
+			avatar?: Express.Multer.File[];
+			banner?: Express.Multer.File[];
+		},
+	) {
+		const avatar = files?.avatar?.[0];
+		const banner = files?.banner?.[0];
+		return this.channelService.update(userId, id, dto, { avatar, banner });
 	}
 
 	//   // PUBLIC PROFILE BY USERNAME

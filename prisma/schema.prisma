@@ -53,6 +53,9 @@ model Channel {
   avatarUrl      String? @map("avatar_url")
   avatarPublicId String? @map("avatar_public_id")
 
+  bannerUrl      String? @map("banner_url")
+  bannerPublicId String? @map("banner_public_id")
+
   isDefault Boolean @default(false) @map("is_default")
 
   userId String @map("user_id")
