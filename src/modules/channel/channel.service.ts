@@ -131,6 +131,7 @@ export class ChannelService {
 						videoFile: true,
 						visibility: true,
 						audience: true,
+						tags: true,
 						publishType: true,
 						publishDate: true,
 						createdAt: true,

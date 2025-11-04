@@ -98,6 +98,9 @@ model Video {
   videoFile     String      @db.VarChar(255)
   thumbnailFile String      @db.VarChar(255)
 
+  videoPublicId     String? @db.VarChar(255)
+  thumbnailPublicId String? @db.VarChar(255)
+
   channelId String  @map("channel_id")
   channel   Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
 

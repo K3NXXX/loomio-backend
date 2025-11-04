@@ -8,6 +8,7 @@ import {
 } from '@nestjs/common';
 import { UploadApiResponse } from 'cloudinary';
 import { CreateVideoDto } from './dto/create-video.dto';
+import { UpdateVideoDto } from './dto/update-video.dto';
 
 @Injectable()
 export class VideosService {
@@ -64,7 +65,9 @@ export class VideosService {
 					publishType,
 					publishDate: publishDate ? new Date(publishDate) : null,
 					videoFile: uploadedVideo.secure_url,
+					videoPublicId: uploadedVideo.public_id,
 					thumbnailFile: uploadedThumbnail.secure_url,
+					thumbnailPublicId: uploadedThumbnail.public_id,
 					channelId,
 				},
 			});
@@ -79,6 +82,7 @@ export class VideosService {
 
 	async findAll() {
 		return this.prisma.video.findMany({
+			where: { visibility: 'public' },
 			orderBy: { createdAt: 'desc' },
 			select: {
 				id: true,
@@ -167,5 +171,122 @@ export class VideosService {
 				dislikes,
 			},
 		};
+	}
+
+	async update(
+		id: string,
+		updateVideoDto: UpdateVideoDto,
+		files: { file?: Express.Multer.File[]; thumbnail?: Express.Multer.File[] },
+		userId: string,
+	) {
+		const existingVideo = await this.prisma.video.findUnique({
+			where: { id },
+			select: {
+				id: true,
+				channel: {
+					select: {
+						id: true,
+						userId: true,
+					},
+				},
+			},
+		});
+
+		if (!existingVideo) {
+			throw new NotFoundException('Video not found');
+		}
+
+		if (existingVideo.channel.userId !== userId) {
+			throw new ForbiddenException('You are not allowed to edit this video');
+		}
+
+		const videoFile = files.file?.[0];
+		const thumbnailFile = files.thumbnail?.[0];
+
+		let videoFileUrl: string | undefined;
+		let thumbnailFileUrl: string | undefined;
+
+		try {
+			if (videoFile) {
+				const uploadedVideo: UploadApiResponse = await this.cloudinary.uploadFile(videoFile, {
+					resource_type: 'video',
+					folder: 'videos',
+				});
+				videoFileUrl = uploadedVideo.secure_url;
+			}
+
+			if (thumbnailFile) {
+				const uploadedThumbnail: UploadApiResponse = await this.cloudinary.uploadFile(
+					thumbnailFile,
+					{
+						resource_type: 'image',
+						folder: 'thumbnails',
+					},
+				);
+				thumbnailFileUrl = uploadedThumbnail.secure_url;
+			}
+
+			const { title, description, tags, visibility, audience, publishType, publishDate } =
+				updateVideoDto;
+
+			const data: any = {};
+
+			if (title !== undefined) data.title = title;
+			if (description !== undefined) data.description = description;
+			if (tags !== undefined) data.tags = tags;
+			if (visibility !== undefined) data.visibility = visibility;
+			if (audience !== undefined) data.audience = audience;
+			if (publishType !== undefined) data.publishType = publishType;
+
+			if (publishDate !== undefined) {
+				data.publishDate = publishDate ? new Date(publishDate) : null;
+			}
+
+			if (videoFileUrl) data.videoFile = videoFileUrl;
+			if (thumbnailFileUrl) data.thumbnailFile = thumbnailFileUrl;
+
+			const updatedVideo = await this.prisma.video.update({
+				where: { id },
+				data,
+			});
+
+			return { message: '✅ Video successfully updated', data: updatedVideo };
+		} catch (err: unknown) {
+			const errorMessage = err instanceof Error ? err.message : String(err);
+			console.error('❌ Video update error:', errorMessage);
+			throw new InternalServerErrorException(`Failed to update video: ${errorMessage}`);
+		}
+	}
+
+	async remove(id: string, userId: string) {
+		const video = await this.prisma.video.findUnique({
+			where: { id },
+			select: {
+				id: true,
+				videoPublicId: true,
+				thumbnailPublicId: true,
+				channel: { select: { userId: true } },
+			},
+		});
+
+		if (!video) throw new NotFoundException('Video not found');
+		if (video.channel.userId !== userId)
+			throw new ForbiddenException('You are not allowed to delete this video');
+
+		try {
+			if (video.videoPublicId) {
+				await this.cloudinary.deleteFile(video.videoPublicId, 'video');
+			}
+			if (video.thumbnailPublicId) {
+				await this.cloudinary.deleteFile(video.thumbnailPublicId, 'image');
+			}
+
+			await this.prisma.video.delete({ where: { id } });
+
+			return { message: '🗑️ Video successfully deleted' };
+		} catch (err) {
+			const message = err instanceof Error ? err.message : String(err);
+			throw new InternalServerErrorException(`Failed to delete video: ${message}`);
+		}
 	}
 }

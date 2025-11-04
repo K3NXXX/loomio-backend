@@ -1,9 +1,9 @@
 import { Inject, Injectable, InternalServerErrorException } from '@nestjs/common';
 import {
+	v2 as CloudinaryType,
 	UploadApiErrorResponse,
 	UploadApiOptions,
 	UploadApiResponse,
-	v2 as CloudinaryType,
 } from 'cloudinary';
 import * as streamifier from 'streamifier';
 
@@ -38,9 +38,14 @@ export class CloudinaryService {
 		}
 	}
 
-	async deleteFile(publicId: string): Promise<UploadApiResponse> {
+	async deleteFile(
+		publicId: string,
+		resourceType: 'image' | 'video' = 'image',
+	): Promise<UploadApiResponse> {
 		try {
-			const result = (await this.cloudinary.uploader.destroy(publicId)) as UploadApiResponse;
+			const result = (await this.cloudinary.uploader.destroy(publicId, {
+				resource_type: resourceType,
+			})) as UploadApiResponse;
 
 			if (result.result !== 'ok') throw new Error(`Cloudinary returned: ${result.result}`);
 
