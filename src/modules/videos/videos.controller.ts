@@ -65,13 +65,13 @@ export class VideosController {
 		return this.videosService.remove(id, userId);
 	}
 
-	// @Patch(':id')
-	// update(@Param('id') id: string, @Body() updateVideoDto: UpdateVideoDto) {
-	// 	return this.videosService.update(+id, updateVideoDto);
-	// }
-
-	// @Delete(':id')
-	// remove(@Param('id') id: string) {
-	// 	return this.videosService.remove(+id);
-	// }
+	@Authorization()
+	@Patch(':id/playlist/:playlistId')
+	addToPlaylist(
+		@CurrentUser('id') userId: string,
+		@Param('id') videoId: string,
+		@Param('playlistId') playlistId: string,
+	) {
+		return this.videosService.addToUserPlaylist(userId, videoId, playlistId);
+	}
 }

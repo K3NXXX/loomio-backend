@@ -9,6 +9,7 @@ import { ChannelModule } from './modules/channel/channel.module';
 import { CommentModule } from './modules/comment/comment.module';
 import { FollowModule } from './modules/follow/follow.module';
 import { LikeModule } from './modules/like/like.module';
+import { PlaylistModule } from './modules/playlist/playlist.module';
 import { SearchModule } from './modules/search/search.module';
 import { UserModule } from './modules/user/user.module';
 import { VideosModule } from './modules/videos/videos.module';
@@ -27,6 +28,7 @@ import { ViewModule } from './modules/view/view.module';
 		ViewModule,
 		ChannelModule,
 		SearchModule,
+		PlaylistModule,
 	],
 	controllers: [AppController],
 	providers: [AppService],

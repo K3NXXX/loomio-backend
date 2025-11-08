@@ -6,10 +6,10 @@ import {
 	InternalServerErrorException,
 	NotFoundException,
 } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { UploadApiResponse } from 'cloudinary';
 import { CreateVideoDto } from './dto/create-video.dto';
 import { UpdateVideoDto } from './dto/update-video.dto';
-import { Prisma } from '@prisma/client'
 
 @Injectable()
 export class VideosService {
@@ -325,8 +325,34 @@ export class VideosService {
 					select: { name: true },
 				},
 			},
-			orderBy: [{ createdAt: 'desc' }], 
+			orderBy: [{ createdAt: 'desc' }],
 			take: 10,
+		});
+	}
+
+	async addToUserPlaylist(userId: string, videoId: string, playlistId: string) {
+		const video = await this.prisma.video.findUnique({ where: { id: videoId } });
+		if (!video) throw new NotFoundException('Video not found');
+
+		const playlist = await this.prisma.playlist.findUnique({
+			where: { id: playlistId },
+		});
+		if (!playlist || playlist.userId !== userId) throw new ForbiddenException('Not allowed');
+
+		return this.prisma.video.update({
+			where: { id: videoId },
+			data: {
+				playlists: {
+					connect: { id: playlistId },
+				},
+			},
+			select: {
+				id: true,
+				title: true,
+				playlists: {
+					select: { id: true, name: true },
+				},
+			},
 		});
 	}
 }
