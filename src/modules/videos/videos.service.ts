@@ -9,6 +9,7 @@ import {
 import { UploadApiResponse } from 'cloudinary';
 import { CreateVideoDto } from './dto/create-video.dto';
 import { UpdateVideoDto } from './dto/update-video.dto';
+import { Prisma } from '@prisma/client'
 
 @Injectable()
 export class VideosService {
@@ -288,5 +289,44 @@ export class VideosService {
 			const message = err instanceof Error ? err.message : String(err);
 			throw new InternalServerErrorException(`Failed to delete video: ${message}`);
 		}
+	}
+
+	async getRecommended(videoId: string) {
+		const current = await this.prisma.video.findUnique({
+			where: { id: videoId },
+			select: { id: true, tags: true, channelId: true },
+		});
+
+		if (!current) return [];
+
+		const tags = current.tags ? current.tags.split(/[\s,]+/).filter(Boolean) : [];
+
+		return this.prisma.video.findMany({
+			where: {
+				AND: [
+					{ id: { not: current.id } },
+					{
+						OR: [
+							{ channelId: current.channelId },
+							...tags.map((t) => ({
+								tags: { contains: t, mode: Prisma.QueryMode.insensitive },
+							})),
+						],
+					},
+				],
+			},
+			select: {
+				id: true,
+				title: true,
+				thumbnailFile: true,
+				createdAt: true,
+				_count: { select: { views: true } },
+				channel: {
+					select: { name: true },
+				},
+			},
+			orderBy: [{ createdAt: 'desc' }], 
+			take: 10,
+		});
 	}
 }

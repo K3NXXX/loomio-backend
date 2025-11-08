@@ -1,6 +1,5 @@
-import { Controller, Get, Param } from '@nestjs/common'
-import { VideosService } from './videos.service'
-
+import { Controller, Get, Param } from '@nestjs/common';
+import { VideosService } from './videos.service';
 
 @Controller('videos/public')
 export class PublicVideosController {
@@ -14,5 +13,10 @@ export class PublicVideosController {
 	@Get(':id')
 	findOne(@Param('id') id: string) {
 		return this.videosService.findOne(id);
+	}
+
+	@Get(':id/recommended')
+	getRecommended(@Param('id') id: string) {
+		return this.videosService.getRecommended(id);
 	}
 }
