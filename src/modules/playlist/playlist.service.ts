@@ -44,6 +44,12 @@ export class PlaylistService {
 				createdAt: true,
 				updatedAt: true,
 				_count: { select: { videos: true } },
+
+				videos: {
+					select: {
+						id: true,
+					},
+				},
 			},
 		});
 	}

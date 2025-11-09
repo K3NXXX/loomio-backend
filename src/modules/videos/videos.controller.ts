@@ -74,4 +74,14 @@ export class VideosController {
 	) {
 		return this.videosService.addToUserPlaylist(userId, videoId, playlistId);
 	}
+
+	@Authorization()
+	@Delete(':id/playlist/:playlistId')
+	removeFromPlaylist(
+		@CurrentUser('id') userId: string,
+		@Param('id') videoId: string,
+		@Param('playlistId') playlistId: string,
+	) {
+		return this.videosService.removeFromUserPlaylist(userId, videoId, playlistId);
+	}
 }

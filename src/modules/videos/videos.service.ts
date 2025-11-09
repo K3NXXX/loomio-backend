@@ -355,4 +355,30 @@ export class VideosService {
 			},
 		});
 	}
+
+	async removeFromUserPlaylist(userId: string, videoId: string, playlistId: string) {
+		const video = await this.prisma.video.findUnique({ where: { id: videoId } });
+		if (!video) throw new NotFoundException('Video not found');
+
+		const playlist = await this.prisma.playlist.findUnique({
+			where: { id: playlistId },
+		});
+		if (!playlist || playlist.userId !== userId) throw new ForbiddenException('Not allowed');
+
+		return this.prisma.video.update({
+			where: { id: videoId },
+			data: {
+				playlists: {
+					disconnect: { id: playlistId },
+				},
+			},
+			select: {
+				id: true,
+				title: true,
+				playlists: {
+					select: { id: true, name: true },
+				},
+			},
+		});
+	}
 }
