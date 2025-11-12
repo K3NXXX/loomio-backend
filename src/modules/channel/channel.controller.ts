@@ -65,7 +65,7 @@ export class ChannelController {
 
 	@Get(':username')
 	getByUsername(@Param('username') username: string) {
-		return this.channelService.findChannelPublic(username);
+		return this.channelService.findChannel(username);
 	}
 
 	@Authorization()

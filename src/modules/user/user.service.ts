@@ -320,4 +320,24 @@ export class UserService {
 			return updatedUser;
 		}
 	}
+
+	async getFollowedChannels(userId: string) {
+		const follows = await this.prisma.channelFollow.findMany({
+			where: { followerId: userId },
+			select: {
+				channel: {
+					select: {
+						id: true,
+						name: true,
+						username: true,
+						avatarUrl: true,
+						description: true,
+					},
+				},
+			},
+			orderBy: { createdAt: 'desc' },
+		});
+
+		return follows.map((f) => f.channel);
+	}
 }

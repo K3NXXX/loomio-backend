@@ -95,4 +95,10 @@ export class UserController {
 	async deleteAvatar(@CurrentUser('id') userId: string) {
 		return this.userService.deleteAvatar(userId);
 	}
+
+	@Get('following')
+	getFollowedChannels(@CurrentUser('id') userId: string) {
+		return this.userService.getFollowedChannels(userId);
+	}
+
 }

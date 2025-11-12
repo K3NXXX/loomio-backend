@@ -9,9 +9,9 @@ import {
 } from '@nestjs/common';
 import { UploadApiResponse } from 'cloudinary';
 import { CreateChannelDto } from './dto/create-channel.dto';
-import { UpdateChannelDto } from './dto/edit-channel.dto'
+import { UpdateChannelDto } from './dto/edit-channel.dto';
 
-type Files = { avatar?: Express.Multer.File; banner?: Express.Multer.File }
+type Files = { avatar?: Express.Multer.File; banner?: Express.Multer.File };
 
 @Injectable()
 export class ChannelService {
@@ -107,7 +107,7 @@ export class ChannelService {
 		});
 	}
 
-	async findChannelPublic(username: string) {
+	async findChannel(username: string) {
 		const normalized = username.replace(/^@/, '').toLowerCase();
 
 		const channel = await this.prisma.channel.findFirst({
@@ -123,6 +123,7 @@ export class ChannelService {
 				userId: true,
 				_count: { select: { followers: true, videos: true } },
 				videos: {
+					where: { publishType: 'now', visibility: 'public' },
 					select: {
 						id: true,
 						title: true,
@@ -159,7 +160,6 @@ export class ChannelService {
 		if (!ch) throw new NotFoundException('Channel not found');
 		if (ch.userId !== userId) throw new ForbiddenException('You are not owner');
 
-		// унікальність username
 		if (dto.username) {
 			const normalized = dto.username.trim().toLowerCase();
 			await this.ensureUsernameFree(normalized, channelId);
@@ -170,7 +170,6 @@ export class ChannelService {
 		let uploadedBanner: UploadApiResponse | null = null;
 
 		try {
-			// 1) upload нових файлів (якщо прийшли)
 			if (files.avatar) {
 				uploadedAvatar = await this.cloudinary.uploadFile(files.avatar, {
 					resource_type: 'image',
@@ -186,7 +185,6 @@ export class ChannelService {
 				});
 			}
 
-			// 2) сформувати payload для Prisma
 			const data: any = {
 				...(dto.name !== undefined ? { name: dto.name } : {}),
 				...(dto.username !== undefined ? { username: dto.username } : {}),
@@ -201,7 +199,6 @@ export class ChannelService {
 				}),
 			};
 
-			// 3) видалення за прапорцями
 			if (dto.removeAvatar) {
 				data.avatarUrl = null;
 				data.avatarPublicId = null;
@@ -211,7 +208,6 @@ export class ChannelService {
 				data.bannerPublicId = null;
 			}
 
-			// 4) апдейт у БД
 			const updated = await this.prisma.channel.update({
 				where: { id: channelId },
 				data,
@@ -227,8 +223,6 @@ export class ChannelService {
 				},
 			});
 
-			// 5) прибрати старі файли в Cloudinary, якщо ми їх замінили або явне видалення
-			//    робимо після успішного запису в БД
 			if (uploadedAvatar && ch.avatarPublicId) {
 				this.cloudinary.deleteFile(ch.avatarPublicId).catch(() => {});
 			}
@@ -244,7 +238,6 @@ export class ChannelService {
 
 			return updated;
 		} catch (err: any) {
-			// Rollback: якщо БД впала — видалити щойно завантажені нові файли
 			if (uploadedAvatar?.public_id) {
 				this.cloudinary.deleteFile(uploadedAvatar.public_id).catch(() => {});
 			}
@@ -261,159 +254,4 @@ export class ChannelService {
 			throw new InternalServerErrorException('Could not update channel');
 		}
 	}
-
-	// async findPublicByUsername(username: string) {
-	// 	const channel = await this.prisma.channel.findUnique({
-	// 		where: { username },
-	// 		select: {
-	// 			id: true,
-	// 			name: true,
-	// 			username: true,
-	// 			description: true,
-	// 			avatarUrl: true,
-	// 			createdAt: true,
-	// 			user: { select: { id: true, username: true, name: true, avatarUrl: true } },
-	// 			_count: { select: { followers: true, videos: true } },
-	// 		},
-	// 	});
-	// 	if (!channel) throw new NotFoundException('Channel not found');
-	// 	return channel;
-	// }
-
-	// async setDefault(userId: string, channelId: string) {
-	// 	const channel = await this.prisma.channel.findUnique({ where: { id: channelId } });
-	// 	if (!channel) throw new NotFoundException('Channel not found');
-	// 	if (channel.userId !== userId) throw new ForbiddenException('Not your channel');
-
-	// 	await this.prisma.$transaction([
-	// 		this.prisma.channel.updateMany({ where: { userId }, data: { isDefault: false } }),
-	// 		this.prisma.channel.update({ where: { id: channelId }, data: { isDefault: true } }),
-	// 	]);
-
-	// 	return { ok: true };
-	// }
-
-	// async update(userId: string, channelId: string, dto: UpdateChannelDto) {
-	// 	const ch = await this.prisma.channel.findUnique({ where: { id: channelId } });
-	// 	if (!ch) throw new NotFoundException('Channel not found');
-	// 	if (ch.userId !== userId) throw new ForbiddenException('You are not owner');
-
-	// 	if (dto.username) await this.ensureUsernameFree(dto.username, channelId);
-
-	// 	return this.prisma.channel.update({
-	// 		where: { id: channelId },
-	// 		data: {
-	// 			...(dto.name !== undefined ? { name: dto.name } : {}),
-	// 			...(dto.username !== undefined ? { username: dto.username } : {}),
-	// 			...(dto.description !== undefined ? { description: dto.description } : {}),
-	// 		},
-	// 		select: {
-	// 			id: true,
-	// 			name: true,
-	// 			username: true,
-	// 			description: true,
-	// 			isDefault: true,
-	// 			createdAt: true,
-	// 			updatedAt: true,
-	// 		},
-	// 	});
-	// }
-
-	// async delete(userId: string, channelId: string) {
-	// 	const ch = await this.prisma.channel.findUnique({ where: { id: channelId } });
-	// 	if (!ch) throw new NotFoundException('Channel not found');
-	// 	if (ch.userId !== userId) throw new ForbiddenException('Not your channel');
-
-	// 	const other = await this.prisma.channel.findFirst({
-	// 		where: { userId, NOT: { id: channelId } },
-	// 	});
-	// 	if (ch.isDefault && other) {
-	// 		throw new BadRequestException('Set another default channel before deleting this one');
-	// 	}
-
-	// 	await this.prisma.channel.delete({ where: { id: channelId } });
-	// 	return { deleted: true };
-	// }
-
-	// async toggleFollow(followerId: string, channelId: string) {
-	// 	const channel = await this.prisma.channel.findUnique({
-	// 		where: { id: channelId },
-	// 		select: { id: true, userId: true },
-	// 	});
-	// 	if (!channel) throw new NotFoundException('Channel not found');
-	// 	if (channel.userId === followerId) {
-	// 		throw new BadRequestException('Cannot follow your own channel');
-	// 	}
-
-	// 	const existing = await this.prisma.channelFollow.findUnique({
-	// 		where: { followerId_channelId: { followerId, channelId } },
-	// 	});
-
-	// 	if (existing) {
-	// 		await this.prisma.channelFollow.delete({ where: { id: existing.id } });
-	// 		return { following: false };
-	// 	}
-
-	// 	await this.prisma.channelFollow.create({ data: { followerId, channelId } });
-	// 	return { following: true };
-	// }
-
-	// async isFollowing(userId: string, channelId: string) {
-	// 	const existing = await this.prisma.channelFollow.findUnique({
-	// 		where: { followerId_channelId: { followerId: userId, channelId } },
-	// 		select: { id: true },
-	// 	});
-	// 	return { isFollowing: !!existing };
-	// }
-
-	// async followerCount(channelId: string) {
-	// 	const c = await this.prisma.channel.findUnique({
-	// 		where: { id: channelId },
-	// 		select: { id: true },
-	// 	});
-	// 	if (!c) throw new NotFoundException('Channel not found');
-	// 	const count = await this.prisma.channelFollow.count({ where: { channelId } });
-	// 	return { count };
-	// }
-
-	// /** Public list of channel videos with pagination */
-	// async listVideos(channelId: string, page = 1, take = 12) {
-	// 	if (page < 1) page = 1;
-	// 	if (take < 1 || take > 100) take = 12;
-	// 	const skip = (page - 1) * take;
-
-	// 	const channelExists = await this.prisma.channel.findUnique({
-	// 		where: { id: channelId },
-	// 		select: { id: true },
-	// 	});
-	// 	if (!channelExists) throw new NotFoundException('Channel not found');
-
-	// 	const [items, total] = await this.prisma.$transaction([
-	// 		this.prisma.video.findMany({
-	// 			where: { channelId, visibility: 'public' },
-	// 			orderBy: { createdAt: 'desc' },
-	// 			skip,
-	// 			take,
-	// 			select: {
-	// 				id: true,
-	// 				title: true,
-	// 				description: true,
-	// 				thumbnailFile: true,
-	// 				videoFile: true,
-	// 				createdAt: true,
-	// 				tags: true,
-	// 				_count: { select: { views: true, comments: true } },
-	// 			},
-	// 		}),
-	// 		this.prisma.video.count({ where: { channelId, visibility: 'public' } }),
-	// 	]);
-
-	// 	return {
-	// 		page,
-	// 		take,
-	// 		total,
-	// 		pages: Math.ceil(total / take),
-	// 		items,
-	// 	};
-	// }
 }

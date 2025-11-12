@@ -7,6 +7,7 @@ import {
 	Body,
 	Controller,
 	Delete,
+	Get,
 	Param,
 	Patch,
 	Post,
@@ -83,5 +84,10 @@ export class VideosController {
 		@Param('playlistId') playlistId: string,
 	) {
 		return this.videosService.removeFromUserPlaylist(userId, videoId, playlistId);
+	}
+
+	@Get('studio/:channelId')
+	findAllForStudio(@Param('channelId') channelId: string) {
+		return this.videosService.findAllForChannelStudio(channelId);
 	}
 }

@@ -83,7 +83,7 @@ export class VideosService {
 
 	async findAll() {
 		return this.prisma.video.findMany({
-			where: { visibility: 'public' },
+			where: { visibility: 'public', publishType: 'now' },
 			orderBy: { createdAt: 'desc' },
 			select: {
 				id: true,
@@ -303,6 +303,8 @@ export class VideosService {
 
 		return this.prisma.video.findMany({
 			where: {
+				publishType: 'now',
+				visibility: 'public',
 				AND: [
 					{ id: { not: current.id } },
 					{
@@ -378,6 +380,27 @@ export class VideosService {
 				playlists: {
 					select: { id: true, name: true },
 				},
+			},
+		});
+	}
+
+	async findAllForChannelStudio(channelId: string) {
+		return this.prisma.video.findMany({
+			where: { channelId },
+			orderBy: { createdAt: 'desc' },
+			select: {
+				id: true,
+				title: true,
+				description: true,
+				tags: true,
+				thumbnailFile: true,
+				videoFile: true,
+				visibility: true,
+				audience: true,
+				publishType: true,
+				publishDate: true,
+				createdAt: true,
+				_count: { select: { views: true, likes: true, comments: true } },
 			},
 		});
 	}
