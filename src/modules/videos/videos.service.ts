@@ -118,6 +118,7 @@ export class VideosService {
 				thumbnailFile: true,
 				createdAt: true,
 				tags: true,
+				videoPublicId: true,
 				_count: {
 					select: {
 						views: true,
