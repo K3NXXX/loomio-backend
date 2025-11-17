@@ -1,9 +1,16 @@
 import { PrismaService } from '@/common/prisma/prisma.service';
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { NotificationType } from '@prisma/client';
+import { NotificationsGateway } from '../notification/notification.gateway';
+import { NotificationService } from '../notification/notification.service';
 
 @Injectable()
 export class FollowService {
-	constructor(private readonly prisma: PrismaService) {}
+	constructor(
+		private readonly prisma: PrismaService,
+		private readonly notificationService: NotificationService,
+		private readonly notificationsGateway: NotificationsGateway,
+	) {}
 
 	async toggleFollow(followerId: string, channelId: string) {
 		const channel = await this.prisma.channel.findUnique({
@@ -37,9 +44,32 @@ export class FollowService {
 			},
 		});
 
+		const follower = await this.prisma.user.findUnique({
+			where: { id: followerId },
+			select: { username: true },
+		});
+
+		const username = follower?.username ?? 'Someone';
+
+		const notification = await this.notificationService.create({
+			type: NotificationType.CHANNEL_NEW_FOLLOWER,
+			message: `${username} followed your channel`,
+			userId: channel.userId,
+			authorId: followerId,
+			channelId,
+		});
+
+		this.notificationsGateway.sendNotification(channel.userId, {
+			id: notification.id,
+			type: notification.type,
+			message: notification.message,
+			authorId: followerId,
+			channelId,
+			createdAt: notification.createdAt,
+		});
+
 		return { following: true };
 	}
-
 
 	async isFollowing(userId: string, channelId: string) {
 		const existing = await this.prisma.channelFollow.findUnique({
@@ -51,5 +81,29 @@ export class FollowService {
 			},
 		});
 		return { isFollowing: !!existing };
+	}
+
+	async toggleNotifications(userId: string, channelId: string) {
+		const follow = await this.prisma.channelFollow.findUnique({
+			where: { followerId_channelId: { followerId: userId, channelId } },
+		});
+
+		if (!follow) throw new NotFoundException('You are not subscribed');
+
+		const updated = await this.prisma.channelFollow.update({
+			where: { id: follow.id },
+			data: { notificationsEnabled: !follow.notificationsEnabled },
+		});
+
+		return updated;
+	}
+
+	async isNotificationsEnabled(userId: string, channelId: string) {
+		const follow = await this.prisma.channelFollow.findUnique({
+			where: { followerId_channelId: { followerId: userId, channelId } },
+			select: { notificationsEnabled: true },
+		});
+
+		return { notificationsEnabled: follow?.notificationsEnabled ?? false };
 	}
 }

@@ -6,8 +6,10 @@ import {
 	InternalServerErrorException,
 	NotFoundException,
 } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { NotificationType, Prisma } from '@prisma/client';
 import { UploadApiResponse } from 'cloudinary';
+import { NotificationsGateway } from '../notification/notification.gateway';
+import { NotificationService } from '../notification/notification.service';
 import { CreateVideoDto } from './dto/create-video.dto';
 import { UpdateVideoDto } from './dto/update-video.dto';
 
@@ -16,6 +18,8 @@ export class VideosService {
 	constructor(
 		private readonly prisma: PrismaService,
 		private readonly cloudinary: CloudinaryService,
+		private readonly notificationService: NotificationService,
+		private readonly notificationsGateway: NotificationsGateway,
 	) {}
 
 	async create(
@@ -72,6 +76,49 @@ export class VideosService {
 					channelId,
 				},
 			});
+
+			const followers = await this.prisma.channelFollow.findMany({
+				where: {
+					channelId,
+					notificationsEnabled: true,
+				},
+				select: {
+					followerId: true,
+					follower: {
+						select: { username: true },
+					},
+				},
+			});
+
+			const channelInfo = await this.prisma.channel.findUnique({
+				where: { id: channelId },
+				select: { name: true },
+			});
+
+			if (followers.length > 0) {
+				const channelName = channelInfo?.name ?? 'Your channel';
+
+				for (const follower of followers) {
+					const notification = await this.notificationService.create({
+						type: NotificationType.VIDEO_PUBLISHED,
+						message: `${channelName} uploaded a new video`,
+						userId: follower.followerId,
+						authorId: userId,
+						videoId: newVideo.id,
+						channelId,
+					});
+
+					this.notificationsGateway.sendNotification(follower.followerId, {
+						id: notification.id,
+						type: notification.type,
+						message: notification.message,
+						authorId: userId,
+						videoId: newVideo.id,
+						channelId,
+						createdAt: notification.createdAt,
+					});
+				}
+			}
 
 			return { message: '✅ Video successfully uploaded', data: newVideo };
 		} catch (err: unknown) {

@@ -15,6 +15,7 @@ import { SearchModule } from './modules/search/search.module';
 import { UserModule } from './modules/user/user.module';
 import { VideosModule } from './modules/videos/videos.module';
 import { ViewModule } from './modules/view/view.module';
+import { NotificationModule } from './modules/notification/notification.module'
 
 @Module({
 	imports: [
@@ -31,6 +32,7 @@ import { ViewModule } from './modules/view/view.module';
 		ChannelModule,
 		SearchModule,
 		PlaylistModule,
+		NotificationModule
 	],
 	controllers: [AppController],
 	providers: [AppService],

@@ -5,21 +5,42 @@ import {
 	Injectable,
 	NotFoundException,
 } from '@nestjs/common';
+import { NotificationType } from '@prisma/client';
+import { NotificationsGateway } from '../notification/notification.gateway';
+import { NotificationService } from '../notification/notification.service';
 import { CommentReactionDto } from './dto/comment-reaction.dto';
 import { CommentDto } from './dto/comment.dto';
 
 @Injectable()
 export class CommentService {
-	constructor(private readonly prisma: PrismaService) {}
+	constructor(
+		private readonly prisma: PrismaService,
+		private readonly notificationService: NotificationService,
+		private readonly notificationsGateway: NotificationsGateway,
+	) {}
 
 	async create(userId: string, dto: CommentDto) {
 		const { videoId, content, parentId } = dto;
 
-		const video = await this.prisma.video.findUnique({ where: { id: videoId } });
+		const video = await this.prisma.video.findUnique({
+			where: { id: videoId },
+			select: {
+				id: true,
+				channel: {
+					select: {
+						id: true,
+						userId: true,
+					},
+				},
+			},
+		});
+
 		if (!video) throw new NotFoundException('Video not found');
 
+		let parentComment: { userId: string; videoId: string } | null = null;
+
 		if (parentId) {
-			const parentComment = await this.prisma.videoComment.findUnique({
+			parentComment = await this.prisma.videoComment.findUnique({
 				where: { id: parentId },
 			});
 
@@ -47,28 +68,76 @@ export class CommentService {
 			},
 		});
 
+		if (!parentId) {
+			const targetUserId = video.channel.userId;
+
+			if (targetUserId !== userId) {
+				const author = await this.prisma.user.findUnique({
+					where: { id: userId },
+					select: { username: true },
+				});
+
+				const username = author?.username ?? 'Someone';
+
+				const notification = await this.notificationService.create({
+					type: NotificationType.COMMENT_NEW,
+					message: `${username} commented on your video`,
+					userId: targetUserId,
+					authorId: userId,
+					videoId,
+					channelId: video.channel.id,
+				});
+
+				this.notificationsGateway.sendNotification(targetUserId, {
+					id: notification.id,
+					type: notification.type,
+					message: notification.message,
+					createdAt: notification.createdAt,
+					authorId: userId,
+					videoId,
+					channelId: video.channel.id,
+				});
+			}
+
+			return comment;
+		}
+
+		const targetUserId = parentComment!.userId;
+
+		if (targetUserId !== userId) {
+			const author = await this.prisma.user.findUnique({
+				where: { id: userId },
+				select: { username: true },
+			});
+
+			const username = author?.username ?? 'Someone';
+
+			const notification = await this.notificationService.create({
+				type: NotificationType.COMMENT_REPLY,
+				message: `${username} replied to your comment`,
+				userId: targetUserId,
+				authorId: userId,
+				videoId,
+				channelId: video.channel.id,
+			});
+
+			this.notificationsGateway.sendNotification(targetUserId, {
+				id: notification.id,
+				type: notification.type,
+				message: notification.message,
+				createdAt: notification.createdAt,
+				authorId: userId,
+				videoId,
+				channelId: video.channel.id,
+			});
+		}
+
 		return comment;
 	}
 
-	// async findOne(id: string, userId: string) {
-	// 	const comment = await this.prisma.comment.findUnique({
-	// 		where: { id },
-	// 		select: this.select(userId),
-	// 	});
-
-	// 	if (!comment) throw new NotFoundException('Comment not found');
-
-	// 	const { likes, ...rest } = comment;
-
-	// 	return {
-	// 		...rest,
-	// 		liked: !!likes.length,
-	// 	};
-	// }
-
-	async findAllForPost(videoId: string, userId: string, page: number, take: number) {
-		const post = await this.prisma.video.findUnique({ where: { id: videoId } });
-		if (!post) throw new NotFoundException('Post not found');
+	async findAllForVideo(videoId: string, userId: string, page: number, take: number) {
+		const video = await this.prisma.video.findUnique({ where: { id: videoId } });
+		if (!video) throw new NotFoundException('Post not found');
 
 		const [comments, total] = await Promise.all([
 			this.prisma.videoComment.findMany({
@@ -89,32 +158,6 @@ export class CommentService {
 			totalPages: Math.ceil(total / take),
 		};
 	}
-
-	// async findReplies(id: string, userId: string, page: number, take: number) {
-	// 	const parent = await this.prisma.comment.findUnique({
-	// 		where: { id: id },
-	// 	});
-	// 	if (!parent) throw new NotFoundException('Parent comment not found');
-
-	// 	const [replies, total] = await Promise.all([
-	// 		this.prisma.comment.findMany({
-	// 			where: { parentId: id },
-	// 			orderBy: { createdAt: 'asc' },
-	// 			skip: (page - 1) * take,
-	// 			take,
-	// 			select: this.select(userId),
-	// 		}),
-	// 		this.prisma.comment.count({ where: { parentId: id } }),
-	// 	]);
-
-	// 	return {
-	// 		data: this.format(replies),
-	// 		total,
-	// 		page,
-	// 		take,
-	// 		totalPages: Math.ceil(total / take),
-	// 	};
-	// }
 
 	async update(id: string, userId: string, content: string) {
 		const comment = await this.prisma.videoComment.findUnique({ where: { id } });

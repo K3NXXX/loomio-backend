@@ -23,25 +23,8 @@ export class CommentController {
 		@Query('page') page = '1',
 		@Query('take') take = '15',
 	) {
-		return this.commentService.findAllForPost(videoId, userId, +page, +take);
+		return this.commentService.findAllForVideo(videoId, userId, +page, +take);
 	}
-
-	// @Authorization()
-	// @Get(':id/replies')
-	// findReplies(
-	// 	@Param('id') id: string,
-	// 	@CurrentUser('id') userId: string,
-	// 	@Query('page') page = '1',
-	// 	@Query('take') take = '5',
-	// ) {
-	// 	return this.commentService.findReplies(id, userId, +page, +take);
-	// }
-
-	// @Authorization()
-	// @Get(':id')
-	// findOne(@Param('id') id: string, @CurrentUser('id') userId: string) {
-	// 	return this.commentService.findOne(id, userId);
-	// }
 
 	@Authorization()
 	@Patch(':id')
