@@ -1,5 +1,5 @@
 import { Authorization } from '@/common/decorators/auth.decorators';
-import { Controller, Delete, Get, Param } from '@nestjs/common';
+import { Controller, Delete, Get, Param, Post } from '@nestjs/common';
 import { CurrentUser } from '../../common/decorators/user.decorator';
 import { NotificationService } from './notification.service';
 
@@ -14,16 +14,16 @@ export class NotificationController {
 	}
 
 	@Authorization()
-	@Get('/read')
-	async markAllAsRead(@CurrentUser('id') userId: string) {
-		await this.notificationService.markAllAsRead(userId);
+	@Post('/read/channel/:channelId')
+	async markChannelRead(@CurrentUser('id') userId: string, @Param('channelId') channelId: string) {
+		await this.notificationService.markAllChannelRead(userId, channelId);
 		return { success: true };
 	}
 
 	@Authorization()
-	@Get('/:id/read')
-	async markAsRead(@Param('id') notificationId: string) {
-		await this.notificationService.markAsRead(notificationId);
+	@Post('/read/personal')
+	async markPersonalRead(@CurrentUser('id') userId: string) {
+		await this.notificationService.markAllPersonalRead(userId);
 		return { success: true };
 	}
 
@@ -33,7 +33,14 @@ export class NotificationController {
 		@CurrentUser('id') userId: string,
 		@Param('channelId') channelId: string,
 	) {
-		await this.notificationService.deleteAll(userId, channelId);
+		await this.notificationService.deleteAllChannelNotifications(userId, channelId);
+		return { success: true };
+	}
+
+	@Authorization()
+	@Delete('/personal')
+	async deletePersonal(@CurrentUser('id') userId: string) {
+		await this.notificationService.deletePersonal(userId);
 		return { success: true };
 	}
 }

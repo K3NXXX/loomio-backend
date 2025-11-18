@@ -105,6 +105,6 @@ export class SessionService {
 		if (!session) throw new NotFoundException('Session not found');
 		if (session.userId !== userId) throw new ForbiddenException('Access denied');
 
-		await this.prisma.session.delete({ where: { id: sessionId } });
+		await this.prisma.session.deleteMany({ where: { id: sessionId } });
 	}
 }

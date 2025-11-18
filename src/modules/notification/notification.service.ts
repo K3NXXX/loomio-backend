@@ -1,5 +1,6 @@
 import { PrismaService } from '@/common/prisma/prisma.service';
 import { Injectable } from '@nestjs/common';
+import { NotificationType } from '@prisma/client';
 import { CreateNotificationDto } from './dto/notification.dto';
 
 @Injectable()
@@ -81,7 +82,7 @@ export class NotificationService {
 						name: true,
 						username: true,
 						avatarUrl: true,
-						userId: true
+						userId: true,
 					},
 				},
 
@@ -98,25 +99,42 @@ export class NotificationService {
 		return { unreadCount, notifications };
 	}
 
-	markAllAsRead(userId: string) {
+	async markAllChannelRead(userId: string, channelId: string) {
 		return this.prisma.notification.updateMany({
-			where: { userId, isRead: false },
+			where: {
+				userId,
+				channelId,
+				isRead: false,
+			},
 			data: { isRead: true },
 		});
 	}
 
-	markAsRead(notificationId: string) {
-		return this.prisma.notification.update({
-			where: { id: notificationId },
+	async markAllPersonalRead(userId: string) {
+		return this.prisma.notification.updateMany({
+			where: {
+				userId,
+				isRead: false,
+				OR: [{ type: NotificationType.COMMENT_REPLY }, { type: NotificationType.VIDEO_PUBLISHED }],
+			},
 			data: { isRead: true },
 		});
 	}
 
-	async deleteAll(userId: string, channelId?: string) {
+	async deleteAllChannelNotifications(userId: string, channelId?: string) {
 		return this.prisma.notification.deleteMany({
 			where: {
 				userId,
 				...(channelId ? { channelId } : {}),
+			},
+		});
+	}
+
+	async deletePersonal(userId: string) {
+		return this.prisma.notification.deleteMany({
+			where: {
+				userId,
+				OR: [{ type: NotificationType.COMMENT_REPLY }, { type: NotificationType.VIDEO_PUBLISHED }],
 			},
 		});
 	}
