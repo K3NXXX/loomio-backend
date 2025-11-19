@@ -254,4 +254,23 @@ export class ChannelService {
 			throw new InternalServerErrorException('Could not update channel');
 		}
 	}
+
+	async getChannelTotalViews(username: string) {
+		const normalized = username.replace(/^@/, '').toLowerCase();
+
+		const channel = await this.prisma.channel.findUnique({
+			where: { username: normalized },
+			select: { id: true },
+		});
+
+		if (!channel) throw new NotFoundException('Channel not found');
+
+		const count = await this.prisma.videoView.count({
+			where: {
+				video: { channelId: channel.id },
+			},
+		});
+
+		return { totalViews: count };
+	}
 }

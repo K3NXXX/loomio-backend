@@ -64,6 +64,7 @@ export class PlaylistService {
 						title: true,
 						thumbnailFile: true,
 						createdAt: true,
+						_count: { select: { views: true } },
 					},
 					orderBy: { createdAt: 'desc' },
 				},
