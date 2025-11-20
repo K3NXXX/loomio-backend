@@ -43,4 +43,11 @@ export class NotificationController {
 		await this.notificationService.deletePersonal(userId);
 		return { success: true };
 	}
+
+	@Authorization()
+	@Post('/:id/read')
+	async markOneAsRead(@CurrentUser('id') userId: string, @Param('id') notificationId: string) {
+		await this.notificationService.markAsRead(notificationId, userId);
+		return { success: true };
+	}
 }

@@ -88,7 +88,7 @@ export class FollowService {
 			where: { followerId_channelId: { followerId: userId, channelId } },
 		});
 
-		if (!follow) throw new NotFoundException('You are not subscribed');
+		if (!follow) return { notificationsEnabled: false };
 
 		const updated = await this.prisma.channelFollow.update({
 			where: { id: follow.id },

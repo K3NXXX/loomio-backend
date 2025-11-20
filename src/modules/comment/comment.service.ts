@@ -86,6 +86,7 @@ export class CommentService {
 					authorId: userId,
 					videoId,
 					channelId: video.channel.id,
+					commentId: comment.id,
 				});
 
 				this.notificationsGateway.sendNotification(targetUserId, {
@@ -96,6 +97,7 @@ export class CommentService {
 					authorId: userId,
 					videoId,
 					channelId: video.channel.id,
+					commentId: comment.id,
 				});
 			}
 
@@ -119,6 +121,7 @@ export class CommentService {
 				authorId: userId,
 				videoId,
 				channelId: video.channel.id,
+				commentId: comment.id,
 			});
 
 			this.notificationsGateway.sendNotification(targetUserId, {
@@ -129,6 +132,7 @@ export class CommentService {
 				authorId: userId,
 				videoId,
 				channelId: video.channel.id,
+				commentId: comment.id,
 			});
 		}
 
