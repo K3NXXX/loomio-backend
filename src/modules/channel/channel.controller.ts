@@ -4,6 +4,7 @@ import { RequestWithUser } from '@/common/types/request-with-user.interface';
 import {
 	Body,
 	Controller,
+	Delete,
 	Get,
 	Param,
 	Patch,
@@ -71,5 +72,11 @@ export class ChannelController {
 	@Get(':username/views')
 	async getChannelTotalViews(@Param('username') username: string) {
 		return this.channelService.getChannelTotalViews(username);
+	}
+
+	@Authorization()
+	@Delete(':id')
+	deleteChannel(@Param('id') id: string, @CurrentUser('id') userId: string) {
+		return this.channelService.delete(userId, id);
 	}
 }

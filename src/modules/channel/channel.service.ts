@@ -273,4 +273,43 @@ export class ChannelService {
 
 		return { totalViews: count };
 	}
+
+	async delete(userId: string, channelId: string) {
+		const channel = await this.prisma.channel.findUnique({
+			where: { id: channelId },
+			select: {
+				id: true,
+				userId: true,
+				avatarPublicId: true,
+				bannerPublicId: true,
+			},
+		});
+
+		if (!channel) {
+			throw new NotFoundException('Channel not found');
+		}
+
+		if (channel.userId !== userId) {
+			throw new ForbiddenException('You are not owner');
+		}
+
+		const deletions: Promise<any>[] = [];
+
+		if (channel.avatarPublicId) {
+			deletions.push(this.cloudinary.deleteFile(channel.avatarPublicId).catch(() => {}));
+		}
+
+		if (channel.bannerPublicId) {
+			deletions.push(this.cloudinary.deleteFile(channel.bannerPublicId).catch(() => {}));
+		}
+
+		await Promise.all(deletions);
+
+		try {
+			await this.prisma.channel.delete({ where: { id: channelId } });
+			return { success: true };
+		} catch (err: any) {
+			throw new InternalServerErrorException('Failed to delete channel');
+		}
+	}
 }
