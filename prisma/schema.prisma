@@ -111,6 +111,9 @@ model Video {
   channelId String  @map("channel_id")
   channel   Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
 
+  likesCount    Int @default(0) @map("likes_count")
+  dislikesCount Int @default(0) @map("dislikes_count")
+
   likes    VideoLike[]
   views    VideoView[]
   comments VideoComment[]
@@ -179,6 +182,9 @@ model VideoComment {
   replies  VideoComment[] @relation("CommentReplies")
 
   reactions VideoCommentReaction[]
+
+  likesCount    Int @default(0) @map("likes_count")
+  dislikesCount Int @default(0) @map("dislikes_count")
 
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt

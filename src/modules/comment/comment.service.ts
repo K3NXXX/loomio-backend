@@ -198,33 +198,61 @@ export class CommentService {
 	async reactToComment(userId: string, commentId: string, dto: CommentReactionDto) {
 		const { type } = dto;
 
-		const comment = await this.prisma.videoComment.findUnique({ where: { id: commentId } });
-		if (!comment) throw new NotFoundException('Comment not found');
+		return this.prisma.$transaction(async (tx) => {
+			const comment = await tx.videoComment.findUnique({ where: { id: commentId } });
+			if (!comment) throw new NotFoundException('Comment not found');
 
-		const existingReaction = await this.prisma.videoCommentReaction.findUnique({
-			where: { userId_commentId: { userId, commentId } },
-		});
+			const existing = await tx.videoCommentReaction.findUnique({
+				where: { userId_commentId: { userId, commentId } },
+			});
 
-		if (existingReaction) {
-			if (existingReaction.type === type) {
-				await this.prisma.videoCommentReaction.delete({
-					where: { id: existingReaction.id },
+			if (!existing) {
+				await tx.videoCommentReaction.create({
+					data: { userId, commentId, type },
 				});
-				return { message: 'Reaction removed' };
-			} else {
-				await this.prisma.videoCommentReaction.update({
-					where: { id: existingReaction.id },
-					data: { type },
+
+				await tx.videoComment.update({
+					where: { id: commentId },
+					data: {
+						likesCount: type === 'LIKE' ? { increment: 1 } : undefined,
+						dislikesCount: type === 'DISLIKE' ? { increment: 1 } : undefined,
+					},
 				});
-				return { message: 'Reaction updated' };
+
+				return { message: 'Reaction added' };
 			}
-		}
 
-		await this.prisma.videoCommentReaction.create({
-			data: { userId, commentId, type },
+			if (existing.type === type) {
+				await tx.videoCommentReaction.delete({
+					where: { id: existing.id },
+				});
+
+				await tx.videoComment.update({
+					where: { id: commentId },
+					data: {
+						likesCount: type === 'LIKE' ? { decrement: 1 } : undefined,
+						dislikesCount: type === 'DISLIKE' ? { decrement: 1 } : undefined,
+					},
+				});
+
+				return { message: 'Reaction removed' };
+			}
+
+			await tx.videoCommentReaction.update({
+				where: { id: existing.id },
+				data: { type },
+			});
+
+			await tx.videoComment.update({
+				where: { id: commentId },
+				data: {
+					likesCount: type === 'LIKE' ? { increment: 1 } : { decrement: 1 },
+					dislikesCount: type === 'DISLIKE' ? { increment: 1 } : { decrement: 1 },
+				},
+			});
+
+			return { message: 'Reaction updated' };
 		});
-
-		return { message: 'Reaction added' };
 	}
 
 	private select() {
@@ -234,6 +262,8 @@ export class CommentService {
 			parentId: true,
 			createdAt: true,
 			updatedAt: true,
+			likesCount: true,
+			dislikesCount: true,
 			user: {
 				select: {
 					id: true,
@@ -246,9 +276,7 @@ export class CommentService {
 				select: {
 					id: true,
 					user: {
-						select: {
-							username: true,
-						},
+						select: { username: true },
 					},
 				},
 			},
@@ -260,22 +288,20 @@ export class CommentService {
 			},
 			_count: {
 				select: {
-					replies: true, // 👈 залишаємо тільки кількість, щоб показувати “2 replies”
+					replies: true,
 				},
 			},
 		};
 	}
 
 	private format(comments: any[], currentUserId?: string) {
-		return comments.map(({ reactions, ...rest }) => {
-			const likes = reactions.filter((r) => r.type === 'LIKE').length;
-			const dislikes = reactions.filter((r) => r.type === 'DISLIKE').length;
+		return comments.map(({ reactions, likesCount, dislikesCount, ...rest }) => {
 			const userReaction = reactions.find((r) => r.userId === currentUserId)?.type ?? null;
 
 			return {
 				...rest,
-				likes,
-				dislikes,
+				likes: likesCount,
+				dislikes: dislikesCount,
 				userReaction,
 			};
 		});

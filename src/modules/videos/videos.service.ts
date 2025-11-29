@@ -155,72 +155,63 @@ export class VideosService {
 	}
 
 	async findOne(id: string) {
-		const video = await this.prisma.video.findFirst({
-			where: { id, visibility: 'public' },
-			select: {
-				id: true,
-				title: true,
-				description: true,
-				videoFile: true,
-				thumbnailFile: true,
-				createdAt: true,
-				tags: true,
-				videoPublicId: true,
-				_count: {
-					select: {
-						views: true,
-						comments: true,
-					},
-				},
-				channel: {
-					select: {
-						id: true,
-						username: true,
-						name: true,
-						userId: true,
-						avatarUrl: true,
-						_count: { select: { followers: true } },
-					},
-				},
-				comments: {
-					select: {
-						id: true,
-						content: true,
-						createdAt: true,
-						user: {
-							select: { id: true, username: true, avatarUrl: true },
-						},
-						replies: {
-							select: {
-								id: true,
-								content: true,
-								createdAt: true,
-								user: { select: { id: true, username: true, avatarUrl: true } },
-							},
-						},
-					},
-				},
-			},
-		});
-
-		if (!video) {
-			throw new NotFoundException('Video not found or is private');
-		}
-
-		const [likes, dislikes] = await Promise.all([
-			this.prisma.videoLike.count({ where: { videoId: id, isLike: true } }),
-			this.prisma.videoLike.count({ where: { videoId: id, isDislike: true } }),
-		]);
-
-		return {
-			...video,
+	const video = await this.prisma.video.findFirst({
+		where: { id, visibility: 'public' },
+		select: {
+			id: true,
+			title: true,
+			description: true,
+			videoFile: true,
+			thumbnailFile: true,
+			createdAt: true,
+			tags: true,
+			videoPublicId: true,
+			likesCount: true,       
+			dislikesCount: true,    
 			_count: {
-				...video._count,
-				likes,
-				dislikes,
+				select: {
+					views: true,
+					comments: true,
+				},
 			},
-		};
+			channel: {
+				select: {
+					id: true,
+					username: true,
+					name: true,
+					userId: true,
+					avatarUrl: true,
+					_count: { select: { followers: true } },
+				},
+			},
+			comments: {
+				select: {
+					id: true,
+					content: true,
+					createdAt: true,
+					user: {
+						select: { id: true, username: true, avatarUrl: true },
+					},
+					replies: {
+						select: {
+							id: true,
+							content: true,
+							createdAt: true,
+							user: { select: { id: true, username: true, avatarUrl: true } },
+						},
+					},
+				},
+			},
+		},
+	});
+
+	if (!video) {
+		throw new NotFoundException('Video not found or is private');
 	}
+
+	return video;
+}
+
 
 	async update(
 		id: string,

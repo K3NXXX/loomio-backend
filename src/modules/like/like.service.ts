@@ -13,151 +13,168 @@ export class LikeService {
 	) {}
 
 	async toggleVideoLike(videoId: string, userId: string) {
-		const existing = await this.prisma.videoLike.findUnique({
-			where: { userId_videoId: { userId, videoId } },
-		});
-
-		let isNewLike = false;
-
-		if (!existing) {
-			await this.prisma.videoLike.create({
-				data: { videoId, userId, isLike: true, isDislike: false },
+		return this.prisma.$transaction(async (tx) => {
+			const existing = await tx.videoLike.findUnique({
+				where: { userId_videoId: { userId, videoId } },
 			});
-			isNewLike = true;
-		} else if (existing.isLike) {
-			await this.prisma.videoLike.delete({ where: { id: existing.id } });
-			return { success: true }; // <- важливо! Не надсилати нотифікацію
-		} else {
-			await this.prisma.videoLike.update({
-				where: { id: existing.id },
-				data: { isLike: true, isDislike: false },
-			});
-			isNewLike = true;
-		}
 
-		if (!isNewLike) {
-			return { success: true };
-		}
+			if (!existing) {
+				await tx.videoLike.create({
+					data: { videoId, userId, isLike: true, isDislike: false },
+				});
 
-		const video = await this.prisma.video.findUnique({
-			where: { id: videoId },
-			select: {
-				title: true,
-				thumbnailFile: true,
-				channel: {
-					select: { id: true, userId: true },
+				await tx.video.update({
+					where: { id: videoId },
+					data: { likesCount: { increment: 1 } },
+				});
+			} else if (existing.isLike) {
+				await tx.videoLike.delete({ where: { id: existing.id } });
+
+				await tx.video.update({
+					where: { id: videoId },
+					data: { likesCount: { decrement: 1 } },
+				});
+
+				return { success: true };
+			} else {
+				await tx.videoLike.update({
+					where: { id: existing.id },
+					data: { isLike: true, isDislike: false },
+				});
+
+				await tx.video.update({
+					where: { id: videoId },
+					data: {
+						likesCount: { increment: 1 },
+						dislikesCount: { decrement: 1 },
+					},
+				});
+			}
+
+			const video = await tx.video.findUnique({
+				where: { id: videoId },
+				select: {
+					channel: { select: { id: true, userId: true } },
 				},
-			},
+			});
+
+			if (!video) throw new NotFoundException('Video not found');
+
+			const targetUserId = video.channel.userId;
+
+			if (targetUserId !== userId) {
+				const user = await tx.user.findUnique({
+					where: { id: userId },
+					select: { username: true },
+				});
+
+				const username = user?.username ?? 'Someone';
+
+				const notification = await this.notificationService.create({
+					type: NotificationType.LIKE_VIDEO,
+					message: `${username} liked your video`,
+					userId: targetUserId,
+					authorId: userId,
+					channelId: video.channel.id,
+					videoId,
+				});
+
+				this.notificationsGateway.sendNotification(targetUserId, {
+					id: notification.id,
+					type: notification.type,
+					message: notification.message,
+					createdAt: notification.createdAt,
+					channelId: video.channel.id,
+					authorId: userId,
+					videoId,
+				});
+			}
+
+			return { success: true };
 		});
-
-		if (!video) throw new NotFoundException('Video not found');
-
-		const targetUserId = video.channel.userId;
-
-		if (targetUserId === userId) return { success: true };
-
-		const user = await this.prisma.user.findUnique({
-			where: { id: userId },
-			select: { username: true },
-		});
-
-		const username = user?.username ?? 'Someone';
-
-		const notification = await this.notificationService.create({
-			type: NotificationType.LIKE_VIDEO,
-			message: `${username} liked your video`,
-			userId: targetUserId,
-			authorId: userId,
-			channelId: video.channel.id,
-			videoId,
-		});
-
-		this.notificationsGateway.sendNotification(targetUserId, {
-			id: notification.id,
-			type: notification.type,
-			message: notification.message,
-			createdAt: notification.createdAt,
-			channelId: video.channel.id,
-			authorId: userId,
-			videoId,
-		});
-
-		return { success: true };
 	}
 
 	async toggleVideoDislike(videoId: string, userId: string) {
-		const existing = await this.prisma.videoLike.findUnique({
-			where: { userId_videoId: { userId, videoId } },
-		});
-
-		let isNewDislike = false;
-
-		if (!existing) {
-			await this.prisma.videoLike.create({
-				data: { videoId, userId, isLike: false, isDislike: true },
+		return this.prisma.$transaction(async (tx) => {
+			const existing = await tx.videoLike.findUnique({
+				where: { userId_videoId: { userId, videoId } },
 			});
-			isNewDislike = true;
-		} else if (existing.isDislike) {
-			await this.prisma.videoLike.delete({ where: { id: existing.id } });
-			return { success: true };
-		} else {
-			await this.prisma.videoLike.update({
-				where: { id: existing.id },
-				data: { isLike: false, isDislike: true },
-			});
-			isNewDislike = true;
-		}
 
-		if (!isNewDislike) {
-			return { success: true };
-		}
+			if (!existing) {
+				await tx.videoLike.create({
+					data: { videoId, userId, isLike: false, isDislike: true },
+				});
 
-		const video = await this.prisma.video.findUnique({
-			where: { id: videoId },
-			select: {
-				title: true,
-				thumbnailFile: true,
-				channel: {
-					select: { id: true, userId: true },
+				await tx.video.update({
+					where: { id: videoId },
+					data: { dislikesCount: { increment: 1 } },
+				});
+			} else if (existing.isDislike) {
+				await tx.videoLike.delete({ where: { id: existing.id } });
+
+				await tx.video.update({
+					where: { id: videoId },
+					data: { dislikesCount: { decrement: 1 } },
+				});
+
+				return { success: true };
+			} else {
+				await tx.videoLike.update({
+					where: { id: existing.id },
+					data: { isLike: false, isDislike: true },
+				});
+
+				await tx.video.update({
+					where: { id: videoId },
+					data: {
+						likesCount: { decrement: 1 },
+						dislikesCount: { increment: 1 },
+					},
+				});
+			}
+
+
+			const video = await tx.video.findUnique({
+				where: { id: videoId },
+				select: {
+					channel: { select: { id: true, userId: true } },
 				},
-			},
-		});
+			});
 
-		if (!video) throw new NotFoundException('Video not found');
+			if (!video) throw new NotFoundException('Video not found');
 
-		const targetUserId = video.channel.userId;
+			const targetUserId = video.channel.userId;
 
-		if (targetUserId === userId) {
+			if (targetUserId !== userId) {
+				const user = await tx.user.findUnique({
+					where: { id: userId },
+					select: { username: true },
+				});
+
+				const username = user?.username ?? 'Someone';
+
+				const notification = await this.notificationService.create({
+					type: NotificationType.DISLIKE_VIDEO,
+					message: `${username} disliked your video`,
+					userId: targetUserId,
+					authorId: userId,
+					channelId: video.channel.id,
+					videoId,
+				});
+
+				this.notificationsGateway.sendNotification(targetUserId, {
+					id: notification.id,
+					type: notification.type,
+					message: notification.message,
+					createdAt: notification.createdAt,
+					channelId: video.channel.id,
+					authorId: userId,
+					videoId,
+				});
+			}
+
 			return { success: true };
-		}
-
-		const user = await this.prisma.user.findUnique({
-			where: { id: userId },
-			select: { username: true },
 		});
-
-		const username = user?.username ?? 'Someone';
-
-		const notification = await this.notificationService.create({
-			type: NotificationType.DISLIKE_VIDEO,
-			message: `${username} disliked your video`,
-			userId: targetUserId,
-			authorId: userId,
-			channelId: video.channel.id,
-			videoId,
-		});
-
-		this.notificationsGateway.sendNotification(targetUserId, {
-			id: notification.id,
-			type: notification.type,
-			message: notification.message,
-			createdAt: notification.createdAt,
-			channelId: video.channel.id,
-			authorId: userId,
-			videoId,
-		});
-
-		return { success: true };
 	}
 
 	async hasLikedVideo(userId: string, videoId: string): Promise<boolean> {

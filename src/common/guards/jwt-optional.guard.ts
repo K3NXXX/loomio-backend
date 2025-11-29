@@ -13,7 +13,7 @@ export class JwtOptionalGuard extends AuthGuard('jwt') {
 		return req;
 	}
 
-	handleRequest(err: any, user: any /*, info?: any, context?: any */) {
+	handleRequest(err: any, user: any) {
 		if (err) {
 			return null;
 		}
