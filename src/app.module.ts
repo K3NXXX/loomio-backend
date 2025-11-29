@@ -16,6 +16,7 @@ import { UserModule } from './modules/user/user.module';
 import { VideosModule } from './modules/videos/videos.module';
 import { ViewModule } from './modules/view/view.module';
 import { NotificationModule } from './modules/notification/notification.module'
+import { ReportModule } from './modules/report/report.module'
 
 @Module({
 	imports: [
@@ -32,7 +33,8 @@ import { NotificationModule } from './modules/notification/notification.module'
 		ChannelModule,
 		SearchModule,
 		PlaylistModule,
-		NotificationModule
+		NotificationModule,
+		ReportModule
 	],
 	controllers: [AppController],
 	providers: [AppService],

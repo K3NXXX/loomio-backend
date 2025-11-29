@@ -27,6 +27,7 @@ model User {
   accounts Account[]
   sessions Session[]
   channels Channel[]
+  reports  Report[]
 
   VideoLike        VideoLike[]
   VideoView        VideoView[]
@@ -124,6 +125,7 @@ model Video {
   updatedAt DateTime @updatedAt
 
   playlists Playlist[] @relation("PlaylistVideos")
+  reports   Report[]
 
   @@index([channelId])
   @@index([visibility])
@@ -189,6 +191,7 @@ model VideoComment {
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
   notifications Notification[] @relation("NotificationToComment")
+  reports       Report[]
 
   @@index([videoId])
   @@index([userId])
@@ -286,6 +289,27 @@ model Notification {
   @@map("notifications")
 }
 
+model Report {
+  id        String       @id @default(uuid())
+  reason    ReportReason
+  message   String?      @db.Text
+  createdAt DateTime     @default(now())
+
+  authorId String
+  author   User   @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  videoId String?
+  video   Video?  @relation(fields: [videoId], references: [id], onDelete: Cascade)
+
+  commentId String?
+  comment   VideoComment? @relation(fields: [commentId], references: [id], onDelete: Cascade)
+
+  @@index([videoId])
+  @@index([commentId])
+  @@index([authorId])
+  @@map("reports")
+}
+
 model Session {
   id        String    @id @default(uuid())
   token     String    @unique
@@ -355,4 +379,13 @@ enum NotificationType {
   LIKE_VIDEO
   DISLIKE_VIDEO
   LIKE_COMMENT
+}
+
+enum ReportReason {
+  HATE_SPEECH
+  HARASSMENT
+  SPAM
+  SEXUAL_CONTENT
+  VIOLENCE
+  OTHER
 }
