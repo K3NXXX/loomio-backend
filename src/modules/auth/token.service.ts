@@ -17,7 +17,7 @@ export class TokenService {
 	) {}
 
 	async issueTokens(user: User, ip: string, userAgent?: string): Promise<TokenPair> {
-		const accessToken = await this.createAccessToken(user.id);
+		const accessToken = await this.createAccessToken(user.id, user.role);
 		const refreshToken = await this.createRefreshToken(user.id, ip, userAgent);
 		const sanitizedUser = omit(user, 'password');
 
@@ -28,9 +28,9 @@ export class TokenService {
 		};
 	}
 
-	async createAccessToken(userId: string): Promise<string> {
+	async createAccessToken(userId: string, role: string): Promise<string> {
 		return this.jwt.signAsync(
-			{ id: userId },
+			{ id: userId, role },
 			{
 				expiresIn: this.configService.get<string>('JWT_ACCESS_EXPIRES_IN'),
 				subject: userId,

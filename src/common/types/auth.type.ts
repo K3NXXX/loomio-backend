@@ -6,6 +6,7 @@ export type OAuthUser = {
 	avatarUrl?: string;
 	provider: string;
 	providerId: string;
+	role: string
 };
 
 

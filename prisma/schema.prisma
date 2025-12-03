@@ -41,6 +41,8 @@ model User {
   notificationsReceived Notification[] @relation("NotificationReceiver")
   notificationsAuthored Notification[] @relation("NotificationAuthor")
 
+  assignedReports Report[] @relation("ReportAssignedTo")
+
   @@index([email])
   @@index([username])
   @@index([isActive])
@@ -296,13 +298,18 @@ model Report {
   createdAt DateTime     @default(now())
 
   authorId String
-  author   User   @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  author   User   @relation(fields: [authorId], references: [id], onDelete: Restrict)
 
   videoId String?
-  video   Video?  @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  video   Video?  @relation(fields: [videoId], references: [id], onDelete: SetNull)
 
   commentId String?
-  comment   VideoComment? @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  comment   VideoComment? @relation(fields: [commentId], references: [id], onDelete: SetNull)
+
+  status ReportStatus @default(PENDING)
+
+  assignedToId String?
+  assignedTo   User?   @relation("ReportAssignedTo", fields: [assignedToId], references: [id])
 
   @@index([videoId])
   @@index([commentId])
@@ -379,6 +386,7 @@ enum NotificationType {
   LIKE_VIDEO
   DISLIKE_VIDEO
   LIKE_COMMENT
+  COMMENT_REMOVED
 }
 
 enum ReportReason {
@@ -388,4 +396,11 @@ enum ReportReason {
   SEXUAL_CONTENT
   VIOLENCE
   OTHER
+}
+
+enum ReportStatus {
+  PENDING
+  IN_PROGRESS
+  RESOLVED
+  REJECTED
 }

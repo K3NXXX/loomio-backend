@@ -75,30 +75,37 @@ export class AuthService {
 	}
 
 	async oauthLogin(profile: OAuthDto, ip: string, userAgent?: string) {
-		try {
-			const { email, provider, providerId } = profile;
+	try {
+		const { email, provider, providerId } = profile;
 
-			const existingAccount = await this.accountService.findAccount(provider, providerId);
-			if (existingAccount)
-				return this.tokenService.issueTokens(existingAccount.user, ip, userAgent);
+		const existingAccount = await this.accountService.findAccount(provider, providerId);
+		if (existingAccount) {
 
-			let user = await this.userService.findByEmail(email);
-			if (!user) {
-				user = await this.userService.createOAuth(profile);
-			} else {
-				await this.accountService.create({
-					provider,
-					providerId,
-					userId: user.id,
-				});
+			if (existingAccount.user.role === 'ADMIN') {
+				throw new ForbiddenException('Admins must log in using email and password.');
 			}
 
-			return this.tokenService.issueTokens(user, ip, userAgent);
-		} catch (error) {
-			this.logger.error(`OAuth login failed: ${error instanceof Error ? error.message : error}`);
-			throw new UnauthorizedException('OAuth login failed');
+			return this.tokenService.issueTokens(existingAccount.user, ip, userAgent);
 		}
+
+		let user = await this.userService.findByEmail(email);
+
+		if (user && user.role === 'ADMIN') {
+			throw new ForbiddenException('Admins cannot use OAuth login.');
+		}
+
+		if (!user) {
+			user = await this.userService.createOAuth(profile);
+		} else {
+			await this.accountService.create({ provider, providerId, userId: user.id });
+		}
+
+		return this.tokenService.issueTokens(user, ip, userAgent);
+	} catch (error) {
+		throw new UnauthorizedException('OAuth login failed');
 	}
+}
+
 
 	async logout(req: Request) {
 		try {

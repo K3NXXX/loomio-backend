@@ -105,7 +105,7 @@ export class UserService {
 				avatarUrl: true,
 				isActive: true,
 				theme: true,
-				bio: true,
+				role: true
 			},
 		});
 	}

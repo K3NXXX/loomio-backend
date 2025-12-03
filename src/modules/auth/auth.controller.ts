@@ -151,21 +151,30 @@ export class AuthController {
 	@RateLimit(3, 60)
 	@GoogleAuthorization()
 	@Get('google/callback')
-	async googleAuthCallback(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
+	async googleAuthCallback(@Req() req: Request, @Res() res: Response) {
 		const clientUrl = this.configService.getOrThrow<string>('CLIENT_URL');
 
 		try {
 			const { ip, userAgent } = extractRequestInfo(req);
+			const oauthUser = req.user as OAuthUser;
+
+			// Якщо ADMIN — забороняємо OAuth
+			if (oauthUser.role === 'ADMIN') {
+				return res.redirect(`${clientUrl}/login?error=admin_oauth_forbidden`);
+			}
+
 			const { accessToken, refreshToken } = await this.authService.oauthLogin(
-				req.user as OAuthUser,
+				oauthUser,
 				ip,
 				userAgent,
 			);
+
 			this.cookieService.setCookies(res, accessToken, refreshToken);
+
 			return res.redirect(`${clientUrl}/callback`);
 		} catch (error) {
-			this.logger.error(`Login failed: ${error instanceof Error ? error.message : error}`);
-			throw new UnauthorizedException('Login failed');
+			this.logger.error(`OAuth failed: ${error instanceof Error ? error.message : error}`);
+			return res.redirect(`${clientUrl}/login?error=oauth_failed`);
 		}
 	}
 
