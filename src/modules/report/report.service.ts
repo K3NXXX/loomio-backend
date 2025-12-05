@@ -1,6 +1,7 @@
+import { CloudinaryService } from '@/common/libs/cloudinary/cloudinary.service';
 import { PrismaService } from '@/common/prisma/prisma.service';
 import { BadRequestException, Injectable } from '@nestjs/common';
-import { NotificationType } from '@prisma/client';
+import { Audience, NotificationType, ReportReason } from '@prisma/client';
 import { NotificationsGateway } from '../notification/notification.gateway';
 import { NotificationService } from '../notification/notification.service';
 import { CreateReportDto } from './dto/create-report.dto';
@@ -11,6 +12,7 @@ export class ReportService {
 		private readonly prisma: PrismaService,
 		private readonly notificationService: NotificationService,
 		private readonly notificationsGateway: NotificationsGateway,
+		private readonly cloudinary: CloudinaryService,
 	) {}
 
 	async create(authorId: string, dto: CreateReportDto) {
@@ -91,18 +93,19 @@ export class ReportService {
 		return this.prisma.report.findMany({
 			where: {
 				status: 'RESOLVED',
+				videoId: null,
 			},
 			orderBy: { createdAt: 'desc' },
+
 			include: {
 				author: { select: { id: true, username: true, avatarUrl: true } },
 				assignedTo: { select: { id: true, username: true, avatarUrl: true } },
+
 				comment: {
 					select: {
 						id: true,
 						content: true,
-						user: {
-							select: { id: true, username: true, avatarUrl: true },
-						},
+						user: { select: { id: true, username: true, avatarUrl: true } },
 					},
 				},
 			},
@@ -114,6 +117,7 @@ export class ReportService {
 			where: {
 				status: 'RESOLVED',
 				commentId: null,
+				videoId: { not: null },
 			},
 			orderBy: { createdAt: 'desc' },
 			include: {
@@ -331,5 +335,187 @@ export class ReportService {
 				status: 'RESOLVED',
 			},
 		});
+	}
+
+	async reportVideo(reportId: string, moderatorId: string) {
+		const report = await this.prisma.report.findUnique({
+			where: { id: reportId },
+			select: {
+				videoId: true,
+				assignedToId: true,
+				status: true,
+				reason: true,
+				video: {
+					select: {
+						id: true,
+						title: true,
+						channel: {
+							select: {
+								id: true,
+								userId: true,
+								username: true,
+								avatarUrl: true,
+							},
+						},
+					},
+				},
+			},
+		});
+
+		if (!report) throw new BadRequestException('Report not found');
+		if (!report.videoId) throw new BadRequestException('This is not a video report');
+		if (report.assignedToId !== moderatorId) throw new BadRequestException('You are not assigned');
+		if (report.status === 'RESOLVED' || report.status === 'REJECTED')
+			throw new BadRequestException('Report already resolved');
+
+		await this.prisma.video.update({
+			where: { id: report.videoId },
+			data: { visibility: 'restricted' },
+		});
+
+		if (!report.video?.channel?.userId) throw new BadRequestException('Video owner not found');
+
+		const notification = await this.notificationService.create({
+			type: NotificationType.VIDEO_RESTRICTED,
+			message: `Your video was restricted for ${report.reason.toLowerCase().replace(/_/g, ' ')}`,
+			userId: report.video.channel.userId,
+			authorId: moderatorId,
+			channelId: report.video.channel.id,
+			videoId: report.videoId,
+		});
+
+		this.notificationsGateway.sendNotification(report.video.channel.userId, {
+			id: notification.id,
+			type: notification.type,
+			message: notification.message,
+			authorId: moderatorId,
+			videoId: report.videoId,
+			createdAt: notification.createdAt,
+			channelId: report.video.channel.id,
+		});
+
+		return this.prisma.report.update({
+			where: { id: reportId },
+			data: { status: 'RESOLVED' },
+		});
+	}
+
+	async requestReviewUpload(
+		videoId: string,
+		dto,
+		files: { video?: Express.Multer.File[]; thumbnail?: Express.Multer.File[] },
+		userId: string,
+	) {
+		const video = await this.prisma.video.findUnique({
+			where: { id: videoId },
+			select: {
+				visibility: true,
+				channelId: true,
+				videoFile: true,
+				thumbnailFile: true,
+				channel: { select: { userId: true } },
+			},
+		});
+
+		if (!video) throw new BadRequestException('Video not found');
+		if (video.channel.userId !== userId) throw new BadRequestException('Not your video');
+		if (video.visibility !== 'restricted') throw new BadRequestException('Video is not restricted');
+
+		const newVideoFile = files.video?.[0];
+		if (!newVideoFile) throw new BadRequestException('New video file required');
+
+		const uploadedVideo = await this.cloudinary.uploadFile(newVideoFile, {
+			resource_type: 'video',
+			folder: 'videos/review',
+		});
+
+		let newThumbnailUrl = video.thumbnailFile;
+		if (files.thumbnail?.[0]) {
+			const uploadedThumb = await this.cloudinary.uploadFile(files.thumbnail[0], {
+				resource_type: 'image',
+				folder: 'thumbnails/review',
+			});
+			newThumbnailUrl = uploadedThumb.secure_url;
+		}
+
+		const updated = await this.prisma.video.update({
+			where: { id: videoId },
+			data: {
+				title: dto.title,
+				description: dto.description,
+				tags: dto.tags,
+				audience: dto.audience as Audience,
+				videoFile: uploadedVideo.secure_url,
+				thumbnailFile: newThumbnailUrl,
+				visibility: 'restricted',
+				publishDate: null,
+			},
+		});
+
+		const report = await this.prisma.report.create({
+			data: {
+				videoId,
+				authorId: userId,
+				status: 'IN_REVIEW',
+				reason: ReportReason.OTHER,
+			},
+		});
+
+		return { message: 'Review request submitted', updated, report };
+	}
+
+	async getStats() {
+		const grouped = await this.prisma.report.groupBy({
+			by: ['assignedToId'],
+			where: { status: 'IN_PROGRESS', assignedToId: { not: null } },
+			_count: { id: true },
+		});
+
+		const moderatorsWorking = await Promise.all(
+			grouped.map(async (mod) => {
+				const user = await this.prisma.user.findUnique({
+					where: { id: mod.assignedToId! },
+					select: { id: true, username: true, avatarUrl: true },
+				});
+
+				return {
+					count: mod._count.id,
+					user,
+				};
+			}),
+		);
+
+		return {
+			total: await this.prisma.report.count(),
+			pending: await this.prisma.report.count({ where: { status: 'PENDING' } }),
+			inProgress: await this.prisma.report.count({ where: { status: 'IN_PROGRESS' } }),
+			resolved: await this.prisma.report.count({ where: { status: 'RESOLVED' } }),
+			rejected: await this.prisma.report.count({ where: { status: 'REJECTED' } }),
+
+			videoReports: await this.prisma.report.count({ where: { videoId: { not: null } } }),
+			commentReports: await this.prisma.report.count({ where: { commentId: { not: null } } }),
+
+			moderatorsWorking, // ← тепер містить avatar, username, count
+
+			activeAssignments: await this.prisma.report.findMany({
+				where: { status: 'IN_PROGRESS' },
+				select: {
+					id: true,
+					reason: true,
+					videoId: true,
+					commentId: true,
+					assignedTo: {
+						select: { id: true, username: true, avatarUrl: true },
+					},
+				},
+			}),
+
+			topReporters: await this.prisma.report.groupBy({
+				by: ['authorId'],
+				_count: { id: true },
+				orderBy: { _count: { id: 'desc' } },
+				take: 10,
+			}),
+		};
 	}
 }

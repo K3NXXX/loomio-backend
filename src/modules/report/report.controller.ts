@@ -2,9 +2,22 @@ import { Role } from '@/common/decorators/role.decorator';
 import { CurrentUser } from '@/common/decorators/user.decorator';
 import { JwtGuard } from '@/common/guards/jwt.guard';
 import { RoleGuard } from '@/common/guards/role.guard';
-import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import {
+	Body,
+	Controller,
+	Delete,
+	Get,
+	Param,
+	Patch,
+	Post,
+	UploadedFiles,
+	UseGuards,
+	UseInterceptors,
+} from '@nestjs/common';
+import { FileFieldsInterceptor } from '@nestjs/platform-express';
 import { UserRole } from '@prisma/client';
 import { CreateReportDto } from './dto/create-report.dto';
+import { RequestReviewDto } from './dto/request-review.dto';
 import { ReportService } from './report.service';
 
 @Controller('reports')
@@ -15,6 +28,13 @@ export class ReportController {
 	@UseGuards(JwtGuard)
 	create(@CurrentUser('id') userId: string, @Body() dto: CreateReportDto) {
 		return this.reportService.create(userId, dto);
+	}
+
+	@Get('stats')
+	@Role(UserRole.ADMIN)
+	@UseGuards(JwtGuard, RoleGuard)
+	getStats() {
+		return this.reportService.getStats();
 	}
 
 	@Get('videos')
@@ -78,5 +98,33 @@ export class ReportController {
 	@UseGuards(JwtGuard, RoleGuard)
 	getVideoHistory() {
 		return this.reportService.getVideoHistory();
+	}
+
+	@Post('report-video/:id')
+	@Role(UserRole.ADMIN)
+	@UseGuards(JwtGuard, RoleGuard)
+	reportVideo(@Param('id') id: string, @CurrentUser('id') userId: string) {
+		return this.reportService.reportVideo(id, userId);
+	}
+
+	@Post('review/:videoId')
+	@UseGuards(JwtGuard)
+	@UseInterceptors(
+		FileFieldsInterceptor([
+			{ name: 'video', maxCount: 1 },
+			{ name: 'thumbnail', maxCount: 1 },
+		]),
+	)
+	requestReview(
+		@Param('videoId') id: string,
+		@Body() dto,
+		@UploadedFiles()
+		files: {
+			video?: Express.Multer.File[];
+			thumbnail?: Express.Multer.File[];
+		},
+		@CurrentUser('id') userId: string,
+	) {
+		return this.reportService.requestReviewUpload(id, dto, files, userId);
 	}
 }

@@ -339,6 +339,7 @@ model Session {
 enum Visibility {
   public
   private
+  restricted
 }
 
 enum Audience {
@@ -387,6 +388,7 @@ enum NotificationType {
   DISLIKE_VIDEO
   LIKE_COMMENT
   COMMENT_REMOVED
+  VIDEO_RESTRICTED
 }
 
 enum ReportReason {
@@ -401,6 +403,7 @@ enum ReportReason {
 enum ReportStatus {
   PENDING
   IN_PROGRESS
+  IN_REVIEW
   RESOLVED
   REJECTED
 }
