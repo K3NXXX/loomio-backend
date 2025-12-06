@@ -17,7 +17,6 @@ import {
 import { FileFieldsInterceptor } from '@nestjs/platform-express';
 import { UserRole } from '@prisma/client';
 import { CreateReportDto } from './dto/create-report.dto';
-import { RequestReviewDto } from './dto/request-review.dto';
 import { ReportService } from './report.service';
 
 @Controller('reports')
@@ -126,5 +125,12 @@ export class ReportController {
 		@CurrentUser('id') userId: string,
 	) {
 		return this.reportService.requestReviewUpload(id, dto, files, userId);
+	}
+
+	@Post('confirm-video/:id')
+	@Role(UserRole.ADMIN)
+	@UseGuards(JwtGuard, RoleGuard)
+	confirmVideoReview(@Param('id') reportId: string, @CurrentUser('id') moderatorId: string) {
+		return this.reportService.confirmReviewVideo(reportId, moderatorId);
 	}
 }

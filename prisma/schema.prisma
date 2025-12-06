@@ -389,6 +389,7 @@ enum NotificationType {
   LIKE_COMMENT
   COMMENT_REMOVED
   VIDEO_RESTRICTED
+  VIDEO_APPROVED
 }
 
 enum ReportReason {

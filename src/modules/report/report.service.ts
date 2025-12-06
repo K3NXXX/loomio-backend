@@ -518,4 +518,60 @@ export class ReportService {
 			}),
 		};
 	}
+
+	async confirmReviewVideo(reportId: string, moderatorId: string) {
+		const report = await this.prisma.report.findUnique({
+			where: { id: reportId },
+			select: {
+				videoId: true,
+				status: true,
+				assignedToId: true,
+				video: {
+					select: {
+						id: true,
+						channel: { select: { userId: true, id: true, username: true } },
+					},
+				},
+			},
+		});
+
+		if (!report) throw new BadRequestException('Report not found');
+		if (!report.videoId) throw new BadRequestException('This is not a video review report');
+		if (report.assignedToId !== moderatorId)
+			throw new BadRequestException('You are not assigned to this report');
+		if (report.status !== 'IN_REVIEW' && report.status !== 'IN_PROGRESS')
+			throw new BadRequestException('This report is not waiting for approval');
+
+		if (!report.video) throw new BadRequestException('Video not found');
+		if (!report.video.channel) throw new BadRequestException('Video owner not found');
+
+		await this.prisma.video.update({
+			where: { id: report.videoId },
+			data: { visibility: 'public' },
+		});
+
+		const notification = await this.notificationService.create({
+			type: NotificationType.VIDEO_APPROVED,
+			message: 'Your video has been approved and is now public',
+			userId: report.video.channel.userId, 
+			authorId: moderatorId,
+			videoId: report.video.id,
+			channelId: report.video.channel.id,
+		});
+
+		this.notificationsGateway.sendNotification(report.video.channel.userId, {
+			id: notification.id,
+			type: notification.type,
+			message: notification.message,
+			authorId: moderatorId,
+			videoId: report.video.id,
+			channelId: report.video.channel.id,
+			createdAt: notification.createdAt,
+		});
+
+		return this.prisma.report.update({
+			where: { id: reportId },
+			data: { status: 'RESOLVED' },
+		});
+	}
 }
