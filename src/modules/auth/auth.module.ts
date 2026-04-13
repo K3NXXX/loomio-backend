@@ -19,6 +19,7 @@ import { AuthService } from './auth.service';
 import { CookieService } from './cookie.service';
 import { SessionService } from './sessions/sessions.service';
 import { TokenService } from './token.service';
+import { FacebookStrategy } from '@/common/strategies/facebook.strategy'
 
 @Module({
 	imports: [
@@ -41,6 +42,7 @@ import { TokenService } from './token.service';
 		JwtStrategy,
 		GoogleStrategy,
 		GithubStrategy,
+		FacebookStrategy,
 		SessionService,
 		TokenService,
 		CookieService,

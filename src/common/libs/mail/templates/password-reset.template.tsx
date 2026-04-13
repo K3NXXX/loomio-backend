@@ -44,7 +44,7 @@ export function PasswordResetTemplate(token: string, domain: string) {
 								If you didn’t request a password reset, you can safely ignore this email.
 							</Text>
 							<Text className='text-xs text-neutral-400 mt-8'>
-								&copy; {new Date().getFullYear()} NEXTGEN. All rights reserved.
+								&copy; {new Date().getFullYear()} LOOMIO. All rights reserved.
 							</Text>
 						</Section>
 					</Container>

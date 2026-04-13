@@ -12,6 +12,10 @@ export class OAuthDto {
 	email: string;
 
 	@IsOptional()
+	@IsEmail()
+	providerEmail?: string;
+
+	@IsOptional()
 	@IsString()
 	avatarUrl?: string;
 

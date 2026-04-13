@@ -13,6 +13,7 @@ model User {
   name     String  @db.VarChar(255)
   username String  @unique @db.VarChar(39)
   email    String  @unique @db.VarChar(255)
+  providerEmail String? @map("provider_email") @db.VarChar(255)
   password String? @db.VarChar(255)
 
   avatarUrl      String? @map("avatar_url")

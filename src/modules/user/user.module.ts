@@ -7,9 +7,10 @@ import { CookieService } from '../auth/cookie.service';
 import { SessionService } from '../auth/sessions/sessions.service';
 import { UserController } from './user.controller';
 import { UserService } from './user.service';
+import { CloudflareModule } from '@/common/libs/cloudflare/cloudflare.module';
 
 @Module({
-	imports: [CloudinaryModule, PrismaModule],
+	imports: [PrismaModule, CloudflareModule],
 	controllers: [UserController],
 	providers: [UserService, SessionService, CookieService],
 	exports: [UserService, SessionService],

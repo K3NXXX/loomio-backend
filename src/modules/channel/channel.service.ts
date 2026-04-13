@@ -10,6 +10,7 @@ import {
 import { UploadApiResponse } from 'cloudinary';
 import { CreateChannelDto } from './dto/create-channel.dto';
 import { UpdateChannelDto } from './dto/edit-channel.dto';
+import { CloudflareImagesService } from '@/common/libs/cloudflare/cloudflare-images.service';
 
 type Files = { avatar?: Express.Multer.File; banner?: Express.Multer.File };
 
@@ -18,6 +19,7 @@ export class ChannelService {
 	constructor(
 		private readonly prisma: PrismaService,
 		private readonly cloudinary: CloudinaryService,
+		private readonly cloudflareImages: CloudflareImagesService,
 	) {}
 
 	private async ensureUsernameFree(username: string, exceptId?: string) {
@@ -32,19 +34,16 @@ export class ChannelService {
 		const username = dto.username.trim().toLowerCase();
 		await this.ensureUsernameFree(username);
 
-		let uploadedAvatar: UploadApiResponse | null = null;
+		let uploadedAvatar: { id: string; url: string } | null = null;
+		let avatarUrl: string | null = null;
+		let avatarPublicId: string | null = null;
 
 		if (avatar) {
 			try {
-				uploadedAvatar = await this.cloudinary.uploadFile(avatar, {
-					resource_type: 'image',
-					folder: 'channels/avatars',
-					invalidate: true,
-				});
+				uploadedAvatar = await this.cloudflareImages.uploadImage(avatar);
+				avatarUrl = uploadedAvatar.url;
+				avatarPublicId = uploadedAvatar.id;
 			} catch (error: unknown) {
-				if (error instanceof Error) {
-					throw new BadRequestException('Failed to upload channel avatar', error.message);
-				}
 				throw new BadRequestException('Failed to upload channel avatar');
 			}
 		}
@@ -55,10 +54,8 @@ export class ChannelService {
 					name: dto.name,
 					username,
 					userId,
-					...(uploadedAvatar && {
-						avatarUrl: uploadedAvatar.secure_url,
-						avatarPublicId: uploadedAvatar.public_id,
-					}),
+					...(avatarUrl && { avatarUrl }),
+					...(avatarPublicId && { avatarPublicId }),
 				},
 				select: {
 					id: true,
@@ -72,9 +69,9 @@ export class ChannelService {
 
 			return channel;
 		} catch (err: any) {
-			if (uploadedAvatar?.public_id) {
+			if (uploadedAvatar?.id) {
 				try {
-					await this.cloudinary.deleteFile(uploadedAvatar.public_id);
+					await this.cloudflareImages.deleteImage(uploadedAvatar.id);
 				} catch {}
 			}
 
@@ -82,9 +79,6 @@ export class ChannelService {
 				throw new BadRequestException('Username is already taken');
 			}
 
-			if (err instanceof Error) {
-				throw new InternalServerErrorException('Could not create channel', err.message);
-			}
 			throw new InternalServerErrorException('Could not create channel');
 		}
 	}

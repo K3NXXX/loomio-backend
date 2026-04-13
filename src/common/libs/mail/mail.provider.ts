@@ -7,7 +7,7 @@ export const MailProvider: Provider = {
 	inject: [ConfigService],
 	useFactory: (configService: ConfigService) => {
 		return nodemailer.createTransport({
-			from: 'NEXTGEN',
+			from: 'LOOMIO',
 			service: configService.getOrThrow<string>('EMAIL_SERVICE'),
 			auth: {
 				user: configService.getOrThrow<string>('EMAIL_USER'),

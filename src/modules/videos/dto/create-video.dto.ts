@@ -60,5 +60,9 @@ export class CreateVideoDto {
 
 	@IsString()
 	@IsNotEmpty()
-	channelId: string; 
+	channelId: string;
+
+	@IsString()
+	@IsNotEmpty()
+	videoPublicId: string;
 }

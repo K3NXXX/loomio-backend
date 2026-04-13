@@ -1,6 +1,7 @@
 import { CloudinaryService } from '@/common/libs/cloudinary/cloudinary.service';
 import { PrismaService } from '@/common/prisma/prisma.service';
 import {
+	BadRequestException,
 	ForbiddenException,
 	Injectable,
 	InternalServerErrorException,
@@ -12,6 +13,8 @@ import { NotificationsGateway } from '../notification/notification.gateway';
 import { NotificationService } from '../notification/notification.service';
 import { CreateVideoDto } from './dto/create-video.dto';
 import { UpdateVideoDto } from './dto/update-video.dto';
+import { CloudflareStreamService } from '@/common/libs/cloudflare/cloudflare-stream.service';
+import { CloudflareImagesService } from '@/common/libs/cloudflare/cloudflare-images.service';
 
 @Injectable()
 export class VideosService {
@@ -20,22 +23,32 @@ export class VideosService {
 		private readonly cloudinary: CloudinaryService,
 		private readonly notificationService: NotificationService,
 		private readonly notificationsGateway: NotificationsGateway,
+		private readonly cloudflareStream: CloudflareStreamService,
+		private readonly cloudflareImages: CloudflareImagesService,
 	) {}
 
 	async create(
 		createVideoDto: CreateVideoDto,
-		files: { file?: Express.Multer.File[]; thumbnail?: Express.Multer.File[] },
+		files: { thumbnail?: Express.Multer.File[] },
 		userId: string,
 	) {
-		const videoFile = files.file?.[0];
 		const thumbnailFile = files.thumbnail?.[0];
 
-		if (!videoFile || !thumbnailFile) {
-			throw new InternalServerErrorException('Video or thumbnail file missing');
+		if (!thumbnailFile) {
+			throw new InternalServerErrorException('Thumbnail file missing');
 		}
 
-		const { channelId, title, description, tags, visibility, audience, publishType, publishDate } =
-			createVideoDto;
+		const {
+			channelId,
+			title,
+			description,
+			tags,
+			visibility,
+			audience,
+			publishType,
+			publishDate,
+			videoPublicId,
+		} = createVideoDto;
 
 		const channel = await this.prisma.channel.findUnique({
 			where: { id: channelId },
@@ -50,15 +63,7 @@ export class VideosService {
 		}
 
 		try {
-			const uploadedVideo: UploadApiResponse = await this.cloudinary.uploadFile(videoFile, {
-				resource_type: 'video',
-				folder: 'videos',
-			});
-
-			const uploadedThumbnail: UploadApiResponse = await this.cloudinary.uploadFile(thumbnailFile, {
-				resource_type: 'image',
-				folder: 'thumbnails',
-			});
+			const uploadedThumbnail = await this.cloudflareImages.uploadImage(thumbnailFile);
 
 			const newVideo = await this.prisma.video.create({
 				data: {
@@ -69,63 +74,23 @@ export class VideosService {
 					audience,
 					publishType,
 					publishDate: publishDate ? new Date(publishDate) : null,
-					videoFile: uploadedVideo.secure_url,
-					videoPublicId: uploadedVideo.public_id,
-					thumbnailFile: uploadedThumbnail.secure_url,
-					thumbnailPublicId: uploadedThumbnail.public_id,
+					videoFile: `https://videodelivery.net/${videoPublicId}/manifest/video.m3u8`,
+					videoPublicId,
+					thumbnailFile: uploadedThumbnail.url,
+					thumbnailPublicId: uploadedThumbnail.id,
 					channelId,
 				},
 			});
 
-			const followers = await this.prisma.channelFollow.findMany({
-				where: {
-					channelId,
-					notificationsEnabled: true,
-				},
-				select: {
-					followerId: true,
-					follower: {
-						select: { username: true },
-					},
-				},
-			});
-
-			const channelInfo = await this.prisma.channel.findUnique({
-				where: { id: channelId },
-				select: { name: true },
-			});
-
-			if (followers.length > 0) {
-				const channelName = channelInfo?.name ?? 'Your channel';
-
-				for (const follower of followers) {
-					const notification = await this.notificationService.create({
-						type: NotificationType.VIDEO_PUBLISHED,
-						message: `${channelName} uploaded a new video`,
-						userId: follower.followerId,
-						authorId: userId,
-						videoId: newVideo.id,
-						channelId,
-					});
-
-					this.notificationsGateway.sendNotification(follower.followerId, {
-						id: notification.id,
-						type: notification.type,
-						message: notification.message,
-						authorId: userId,
-						videoId: newVideo.id,
-						channelId,
-						createdAt: notification.createdAt,
-					});
-				}
-			}
-
-			return { message: '✅ Video successfully uploaded', data: newVideo };
+			return { message: '✅ Video created', data: newVideo };
 		} catch (err: unknown) {
 			const errorMessage = err instanceof Error ? err.message : String(err);
-			console.error('❌ Video upload error:', errorMessage);
-			throw new InternalServerErrorException(`Failed to upload video: ${errorMessage}`);
+			throw new InternalServerErrorException(`Failed to create video: ${errorMessage}`);
 		}
+	}
+
+	async getStatus(videoId: string) {
+		return this.cloudflareStream.getVideoStatus(videoId);
 	}
 
 	async findAll() {
@@ -155,63 +120,62 @@ export class VideosService {
 	}
 
 	async findOne(id: string) {
-	const video = await this.prisma.video.findFirst({
-		where: { id, visibility: 'public' },
-		select: {
-			id: true,
-			title: true,
-			description: true,
-			videoFile: true,
-			thumbnailFile: true,
-			createdAt: true,
-			tags: true,
-			videoPublicId: true,
-			likesCount: true,       
-			dislikesCount: true,    
-			_count: {
-				select: {
-					views: true,
-					comments: true,
-				},
-			},
-			channel: {
-				select: {
-					id: true,
-					username: true,
-					name: true,
-					userId: true,
-					avatarUrl: true,
-					_count: { select: { followers: true } },
-				},
-			},
-			comments: {
-				select: {
-					id: true,
-					content: true,
-					createdAt: true,
-					user: {
-						select: { id: true, username: true, avatarUrl: true },
+		const video = await this.prisma.video.findFirst({
+			where: { id, visibility: 'public' },
+			select: {
+				id: true,
+				title: true,
+				description: true,
+				videoFile: true,
+				thumbnailFile: true,
+				createdAt: true,
+				tags: true,
+				videoPublicId: true,
+				likesCount: true,
+				dislikesCount: true,
+				_count: {
+					select: {
+						views: true,
+						comments: true,
 					},
-					replies: {
-						select: {
-							id: true,
-							content: true,
-							createdAt: true,
-							user: { select: { id: true, username: true, avatarUrl: true } },
+				},
+				channel: {
+					select: {
+						id: true,
+						username: true,
+						name: true,
+						userId: true,
+						avatarUrl: true,
+						_count: { select: { followers: true } },
+					},
+				},
+				comments: {
+					select: {
+						id: true,
+						content: true,
+						createdAt: true,
+						user: {
+							select: { id: true, username: true, avatarUrl: true },
+						},
+						replies: {
+							select: {
+								id: true,
+								content: true,
+								createdAt: true,
+								user: { select: { id: true, username: true, avatarUrl: true } },
+							},
 						},
 					},
 				},
 			},
-		},
-	});
+		});
 
-	if (!video) {
-		throw new NotFoundException('Video not found or is private');
+		if (!video) {
+			throw new NotFoundException('Video not found or is private');
+		}
+
+		return video;
 	}
-
-	return video;
-}
-
 
 	async update(
 		id: string,
@@ -315,18 +279,32 @@ export class VideosService {
 
 		try {
 			if (video.videoPublicId) {
-				await this.cloudinary.deleteFile(video.videoPublicId, 'video');
+				await this.cloudflareStream.deleteVideo(video.videoPublicId);
 			}
+
 			if (video.thumbnailPublicId) {
-				await this.cloudinary.deleteFile(video.thumbnailPublicId, 'image');
+				await this.cloudflareImages.deleteImage(video.thumbnailPublicId);
 			}
 
 			await this.prisma.video.delete({ where: { id } });
 
-			return { message: '🗑️ Video successfully deleted' };
+			return { message: 'Video successfully deleted' };
 		} catch (err) {
 			const message = err instanceof Error ? err.message : String(err);
 			throw new InternalServerErrorException(`Failed to delete video: ${message}`);
+		}
+	}
+
+	async getUploadUrl() {
+		return this.cloudflareStream.createDirectUpload();
+	}
+
+	async deleteTemp(videoId: string) {
+		try {
+			await this.cloudflareStream.deleteVideo(videoId);
+			return { success: true };
+		} catch (err) {
+			throw new InternalServerErrorException('Failed to delete temp video');
 		}
 	}
 

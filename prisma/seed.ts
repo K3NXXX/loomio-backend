@@ -7,7 +7,7 @@ async function main() {
 	console.log('🌱 Starting seed...');
 
 	const adminEmail = 'admin@loomio.com';
-	const adminPassword = 'admin123456789'; 
+	const adminPassword = 'admin123456789';
 	const hashedPassword = await argon2.hash(adminPassword);
 
 	const admin = await prisma.user.upsert({
@@ -20,7 +20,7 @@ async function main() {
 			password: hashedPassword,
 			role: 'ADMIN',
 			isActive: true,
-			theme: 'RED',
+			theme: 'BLUE',
 		},
 	});
 

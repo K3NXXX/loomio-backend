@@ -65,7 +65,7 @@ export class AuthService {
 			if (!user.isActive) throw new ForbiddenException('User account is inactive');
 
 			const isMatch = await verify(user.password, dto.password);
-			if (!isMatch) throw new BadRequestException('Invalid credentials');
+				if (!isMatch) throw new BadRequestException('Invalid credentials');
 
 			return this.tokenService.issueTokens(user, ip, userAgent);
 		} catch (error) {
@@ -75,37 +75,44 @@ export class AuthService {
 	}
 
 	async oauthLogin(profile: OAuthDto, ip: string, userAgent?: string) {
-	try {
-		const { email, provider, providerId } = profile;
+		try {
+			let { email, provider, providerId } = profile;
 
-		const existingAccount = await this.accountService.findAccount(provider, providerId);
-		if (existingAccount) {
-
-			if (existingAccount.user.role === 'ADMIN') {
-				throw new ForbiddenException('Admins must log in using email and password.');
+			if (!email) {
+				email = `${providerId}@${provider}.local`;
 			}
 
-			return this.tokenService.issueTokens(existingAccount.user, ip, userAgent);
+			const existingAccount = await this.accountService.findAccount(provider, providerId);
+			if (existingAccount) {
+				if (existingAccount.user.role === 'ADMIN') {
+					throw new ForbiddenException('Admins must log in using email and password.');
+				}
+
+				return this.tokenService.issueTokens(existingAccount.user, ip, userAgent);
+			}
+
+			let user = await this.userService.findByEmail(email);
+
+			if (user && user.role === 'ADMIN') {
+				throw new ForbiddenException('Admins cannot use OAuth login.');
+			}
+
+			if (!user) {
+				user = await this.userService.createOAuth({
+					...profile,
+					email,
+					providerEmail: email,
+				});
+			} else {
+				await this.accountService.create({ provider, providerId, userId: user.id });
+			}
+
+			return this.tokenService.issueTokens(user, ip, userAgent);
+		} catch (error) {
+			console.log('REAL OAUTH ERROR:', error);
+			throw new UnauthorizedException('OAuth login failed');
 		}
-
-		let user = await this.userService.findByEmail(email);
-
-		if (user && user.role === 'ADMIN') {
-			throw new ForbiddenException('Admins cannot use OAuth login.');
-		}
-
-		if (!user) {
-			user = await this.userService.createOAuth(profile);
-		} else {
-			await this.accountService.create({ provider, providerId, userId: user.id });
-		}
-
-		return this.tokenService.issueTokens(user, ip, userAgent);
-	} catch (error) {
-		throw new UnauthorizedException('OAuth login failed');
 	}
-}
-
 
 	async logout(req: Request) {
 		try {

@@ -6,9 +6,10 @@ import { PublicVideosController } from './videos-public.controller';
 import { VideosController } from './videos.controller';
 import { VideoScheduler } from './videos.scheduler';
 import { VideosService } from './videos.service';
+import { CloudflareModule } from '@/common/libs/cloudflare/cloudflare.module';
 
 @Module({
-	imports: [PrismaModule, CloudinaryModule, NotificationModule],
+	imports: [PrismaModule, CloudinaryModule, NotificationModule, CloudflareModule],
 	controllers: [VideosController, PublicVideosController],
 	providers: [VideosService, VideoScheduler],
 })

@@ -14,6 +14,7 @@ import { omit } from 'lodash';
 
 import {
 	Authorization,
+	FacebookAuthorization,
 	GitHubAuthorization,
 	GoogleAuthorization,
 } from '@/common/decorators/auth.decorators';
@@ -158,7 +159,6 @@ export class AuthController {
 			const { ip, userAgent } = extractRequestInfo(req);
 			const oauthUser = req.user as OAuthUser;
 
-			// Якщо ADMIN — забороняємо OAuth
 			if (oauthUser.role === 'ADMIN') {
 				return res.redirect(`${clientUrl}/login?error=admin_oauth_forbidden`);
 			}
@@ -201,6 +201,33 @@ export class AuthController {
 		} catch (error) {
 			this.logger.error(`Login failed: ${error instanceof Error ? error.message : error}`);
 			throw new UnauthorizedException('Login failed');
+		}
+	}
+
+	@FacebookAuthorization()
+	@Get('facebook')
+	facebookAuth(): void {}
+
+	@FacebookAuthorization()
+	@Get('facebook/callback')
+	async facebookCallback(@Req() req: Request, @Res() res: Response) {
+		const clientUrl = this.configService.getOrThrow<string>('CLIENT_URL');
+
+		try {
+			const { ip, userAgent } = extractRequestInfo(req);
+
+			const { accessToken, refreshToken } = await this.authService.oauthLogin(
+				req.user as OAuthUser,
+				ip,
+				userAgent,
+			);
+
+			this.cookieService.setCookies(res, accessToken, refreshToken);
+
+			return res.redirect(`${clientUrl}/callback`);
+		} catch (error) {
+			console.log('OAUTH ERROR:', error);
+			return res.redirect(`${clientUrl}/login?error=oauth_failed`);
 		}
 	}
 }

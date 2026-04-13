@@ -19,3 +19,7 @@ export function GoogleAuthorization() {
 export function GitHubAuthorization() {
 	return UseGuards(AuthGuard('github'));
 }
+
+export function FacebookAuthorization() {
+  return UseGuards(AuthGuard('facebook'));
+}

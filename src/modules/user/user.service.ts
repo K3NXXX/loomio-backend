@@ -8,9 +8,7 @@ import {
 } from '@nestjs/common';
 import { Prisma, User } from '@prisma/client';
 import { argon2id, hash, verify } from 'argon2';
-import { UploadApiResponse } from 'cloudinary';
 
-import { CloudinaryService } from '@/common/libs/cloudinary/cloudinary.service';
 import { PrismaService } from '@/common/prisma/prisma.service';
 
 import { SignupDto } from '../auth/dto/auth.dto';
@@ -18,12 +16,13 @@ import { OAuthDto } from '../auth/dto/oauth.dto';
 import { SearchUsersDto } from './dto/search-users.dto';
 import { UpdateThemeDto } from './dto/theme.dto';
 import { UpdateAccountDto } from './dto/update-account.dto';
+import { CloudflareImagesService } from '@/common/libs/cloudflare/cloudflare-images.service';
 
 @Injectable()
 export class UserService {
 	constructor(
 		private readonly prisma: PrismaService,
-		private readonly cloudinary: CloudinaryService,
+		private readonly cloudflareImages: CloudflareImagesService,
 	) {}
 
 	async create(dto: SignupDto | (OAuthDto & { password?: string | null })) {
@@ -49,6 +48,7 @@ export class UserService {
 					name: dto.name.trim(),
 					username: username.trim().toLowerCase(),
 					email: dto.email.trim().toLowerCase(),
+					providerEmail: dto.providerEmail?.trim().toLowerCase() ?? null,
 					avatarUrl: dto.avatarUrl ?? null,
 					password: null,
 				},
@@ -95,7 +95,7 @@ export class UserService {
 	}
 
 	async getAuthUser(id: string) {
-		return this.prisma.user.findUnique({
+		const user = await this.prisma.user.findUnique({
 			where: { id },
 			select: {
 				id: true,
@@ -105,9 +105,37 @@ export class UserService {
 				avatarUrl: true,
 				isActive: true,
 				theme: true,
-				role: true
+				role: true,
+				password: true, // 👈 додаємо
+				accounts: {
+					select: {
+						provider: true,
+					},
+				},
 			},
 		});
+
+		if (!user) return null;
+
+		const hasPassword = !!user.password;
+		const authProviders = user.accounts.map((acc) => acc.provider);
+		const hasGoogle = authProviders.includes('google');
+
+		return {
+			id: user.id,
+			name: user.name,
+			username: user.username,
+			email: user.email,
+			avatarUrl: user.avatarUrl,
+			isActive: user.isActive,
+			theme: user.theme,
+			role: user.role,
+
+			hasPassword,
+			authProviders,
+			canChangePassword: hasPassword,
+			canChangeEmail: !hasGoogle,
+		};
 	}
 
 	async searchUsers(userId: string, dto: SearchUsersDto) {
@@ -175,7 +203,7 @@ export class UserService {
 
 		if (user.avatarPublicId) {
 			try {
-				await this.cloudinary.deleteFile(user.avatarPublicId);
+				await this.cloudflareImages.deleteImage(user.avatarPublicId);
 			} catch (error: unknown) {
 				if (error instanceof Error) {
 					throw new InternalServerErrorException('Could not delete old avatar', error.message);
@@ -184,12 +212,10 @@ export class UserService {
 			}
 		}
 
-		let uploadedAvatar: UploadApiResponse;
+		let uploadedAvatar: { id: string; url: string };
 
 		try {
-			uploadedAvatar = await this.cloudinary.uploadFile(file, {
-				invalidate: true,
-			});
+			uploadedAvatar = await this.cloudflareImages.uploadImage(file);
 		} catch (error: unknown) {
 			if (error instanceof Error) {
 				throw new BadRequestException('Failed to upload avatar', error.message);
@@ -201,12 +227,12 @@ export class UserService {
 			await this.prisma.user.update({
 				where: { id: userId },
 				data: {
-					avatarUrl: uploadedAvatar.secure_url,
-					avatarPublicId: uploadedAvatar.public_id,
+					avatarUrl: uploadedAvatar.url,
+					avatarPublicId: uploadedAvatar.id,
 				},
 			});
 
-			return { avatarUrl: uploadedAvatar.secure_url };
+			return { avatarUrl: uploadedAvatar.url };
 		} catch (error: unknown) {
 			if (error instanceof Error) {
 				throw new InternalServerErrorException('Error updating user avatar', error.message);
@@ -221,7 +247,7 @@ export class UserService {
 
 		if (user.avatarPublicId) {
 			try {
-				await this.cloudinary.deleteFile(user.avatarPublicId);
+				await this.cloudflareImages.deleteImage(user.avatarPublicId);
 			} catch (error: unknown) {
 				if (error instanceof Error) {
 					throw new InternalServerErrorException('Error to delete image', error.message);
@@ -240,85 +266,89 @@ export class UserService {
 
 		return true;
 	}
+	async generateUsername(base?: string): Promise<string> {
+		const safeBase = base?.trim() ? base : `user`;
 
-	async generateUsername(base: string): Promise<string> {
-		const cleanBase = base
-			.trim()
+		let cleanBase = safeBase
 			.toLowerCase()
-			.replace(/\s+/g, '_')
-			.replace(/[^a-z0-9_]/g, '');
+			.replace(/\s+/g, '')
+			.replace(/[^a-z0-9]/g, '');
 
-		const candidates = new Set<string>();
-		candidates.add(cleanBase);
-
-		while (candidates.size < 20) {
-			const suffix = Math.floor(1000 + Math.random() * 9000);
-			candidates.add(`${cleanBase}_${suffix}`);
+		if (!cleanBase || cleanBase.length < 3) {
+			cleanBase = `user`;
 		}
 
-		const usernames = Array.from(candidates);
-
-		const existing = await this.prisma.user.findMany({
-			where: { username: { in: usernames } },
-			select: { username: true },
+		const exists = await this.prisma.user.findUnique({
+			where: { username: cleanBase },
 		});
 
-		const taken = new Set(existing.map((u) => u.username));
-		const available = usernames.find((u) => !taken.has(u));
+		if (!exists) return cleanBase;
 
-		if (!available) throw new ConflictException('Unable to generate a unique username');
+		for (let i = 1; i <= 100; i++) {
+			const candidate = `${cleanBase}${i}`;
 
-		return available;
+			const taken = await this.prisma.user.findUnique({
+				where: { username: candidate },
+			});
+
+			if (!taken) return candidate;
+		}
+
+		return `${cleanBase}${Math.floor(1000 + Math.random() * 9000)}`;
 	}
 
 	async updateAccount(userId: string, dto: UpdateAccountDto) {
-		const user = await this.prisma.user.findUnique({ where: { id: userId } });
-		if (!user) throw new NotFoundException('User not found');
+		const user = await this.prisma.user.findUnique({
+			where: { id: userId },
+		});
+
+		if (!user) {
+			throw new NotFoundException('User not found');
+		}
 
 		const { currentPassword, newPassword, ...rest } = dto;
 
-		if (rest.email || newPassword) {
-			{
+		let passwordHash: string | undefined;
+
+		if (newPassword) {
+			if (!user.password) {
+				passwordHash = await hash(newPassword);
+			} else {
 				if (!currentPassword) {
 					throw new UnauthorizedException('Current password is required');
 				}
 
-				if (!user.password) {
-					throw new UnauthorizedException('Password authentication not available for this account');
-				}
-
 				const isPasswordValid = await verify(user.password, currentPassword);
+
 				if (!isPasswordValid) {
 					throw new UnauthorizedException('Incorrect current password');
 				}
-			}
 
-			let passwordHash: string | undefined;
-			if (newPassword) {
 				if (newPassword === currentPassword) {
 					throw new BadRequestException('New password must be different from current password');
 				}
+
 				passwordHash = await hash(newPassword);
 			}
-
-			const updatedUser = await this.prisma.user.update({
-				where: { id: userId },
-				data: {
-					...rest,
-					...(passwordHash ? { password: passwordHash } : {}),
-				},
-				select: {
-					id: true,
-					name: true,
-					email: true,
-					bio: true,
-					avatarUrl: true,
-					createdAt: true,
-				},
-			});
-
-			return updatedUser;
 		}
+
+		const updatedUser = await this.prisma.user.update({
+			where: { id: userId },
+			data: {
+				...rest,
+				...(passwordHash ? { password: passwordHash } : {}),
+			},
+			select: {
+				id: true,
+				name: true,
+				email: true,
+				bio: true,
+				avatarUrl: true,
+				createdAt: true,
+			},
+		});
+
+		return updatedUser;
 	}
 
 	async getFollowedChannels(userId: string) {

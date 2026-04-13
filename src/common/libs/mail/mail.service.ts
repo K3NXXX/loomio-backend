@@ -23,7 +23,7 @@ export class MailService {
 	async sendPasswordResetToken(email: string, token: string): Promise<SentMessageInfo> {
 		const domain = this.configService.getOrThrow<string>('CLIENT_URL');
 		const html = await render(PasswordResetTemplate(token, domain));
-		return this.sendMail(email, 'Password reset NextGen', html);
+		return this.sendMail(email, 'Password reset Loomio', html);
 	}
 
 	private sendMail(email: string, subject: string, html: string) {

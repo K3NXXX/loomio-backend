@@ -26,6 +26,11 @@ export class UpdateAccountDto {
 
 	@IsOptional()
 	@Transform(trimTransform)
+	@MinLength(3, { message: 'Username must be at least 3 characters' })
+	username?: string;
+
+	@IsOptional()
+	@Transform(trimTransform)
 	@MinLength(10, { message: 'Password requires min 10 characters' })
 	@Matches(/^(?=.*[A-Za-z])(?=.*\d)(?=.*[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]).+$/, {
 		message:
@@ -35,7 +40,5 @@ export class UpdateAccountDto {
 
 	@IsOptional()
 	@Transform(trimTransform)
-	@ValidateIf((o: UpdateAccountDto) => Boolean(o.email || o.newPassword))
-	@MinLength(1, { message: 'Current password is required' })
 	currentPassword?: string;
 }

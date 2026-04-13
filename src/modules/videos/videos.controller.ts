@@ -1,4 +1,4 @@
-import { FileFieldsInterceptor } from '@nestjs/platform-express';
+import { FileFieldsInterceptor, FileInterceptor } from '@nestjs/platform-express';
 import { VideosService } from './videos.service';
 
 import { Authorization } from '@/common/decorators/auth.decorators';
@@ -11,6 +11,7 @@ import {
 	Param,
 	Patch,
 	Post,
+	UploadedFile,
 	UploadedFiles,
 	UseInterceptors,
 } from '@nestjs/common';
@@ -41,6 +42,11 @@ export class VideosController {
 		return this.videosService.create(createVideoDto, files, userId);
 	}
 
+	@Get('status/:id')
+	getStatus(@Param('id') id: string) {
+		return this.videosService.getStatus(id);
+	}
+
 	@Patch(':id')
 	@UseInterceptors(
 		FileFieldsInterceptor([
@@ -66,6 +72,11 @@ export class VideosController {
 		return this.videosService.remove(id, userId);
 	}
 
+	@Delete('temp/:videoId')
+	deleteTemp(@Param('videoId') videoId: string) {
+		return this.videosService.deleteTemp(videoId);
+	}
+
 	@Authorization()
 	@Patch(':id/playlist/:playlistId')
 	addToPlaylist(
@@ -74,6 +85,11 @@ export class VideosController {
 		@Param('playlistId') playlistId: string,
 	) {
 		return this.videosService.addToUserPlaylist(userId, videoId, playlistId);
+	}
+
+	@Post('upload-url')
+	getUploadUrl() {
+		return this.videosService.getUploadUrl();
 	}
 
 	@Authorization()
