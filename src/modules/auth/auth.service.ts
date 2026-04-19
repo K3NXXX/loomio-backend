@@ -65,12 +65,16 @@ export class AuthService {
 			if (!user.isActive) throw new ForbiddenException('User account is inactive');
 
 			const isMatch = await verify(user.password, dto.password);
-				if (!isMatch) throw new BadRequestException('Invalid credentials');
+			if (!isMatch) throw new BadRequestException('Invalid credentials');
 
 			return this.tokenService.issueTokens(user, ip, userAgent);
 		} catch (error) {
-			this.logger.error(`Login failed: ${error instanceof Error ? error.message : error}`);
-			throw new UnauthorizedException('Login failed');
+			this.logger.error(
+				`Email or password incorrect: ${error instanceof Error ? error.message : error}`,
+			);
+			throw new UnauthorizedException({
+				code: 'auth.invalidCredentials',
+			});
 		}
 	}
 

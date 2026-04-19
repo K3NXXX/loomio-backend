@@ -98,6 +98,10 @@ export class AuthController {
 
 		this.cookieService.setCookies(res, accessToken, refreshToken);
 		this.cookieService.setThemeCookie(res, user.theme);
+		this.cookieService.setPreferenceCookie(res, 'locale', user.locale.toLowerCase());
+
+		console.log('USER:', user);
+		console.log('LOCALE:', user.locale);
 
 		return { success: true, user, message: 'Logged in successfully' };
 	}

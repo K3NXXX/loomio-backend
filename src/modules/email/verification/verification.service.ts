@@ -90,7 +90,8 @@ export class VerificationService {
 		const waitTime = getSecondsRemaining(token.createdAt);
 		if (waitTime > 0) {
 			throw new ConflictException({
-				message: `Please wait ${waitTime} seconds before requesting a new code.`,
+				code: 'auth.waitBeforeResend',
+				waitTime,
 				expiresAt: new Date(Date.now() + waitTime * 1000),
 			});
 		}

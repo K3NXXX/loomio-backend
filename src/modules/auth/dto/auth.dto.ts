@@ -1,6 +1,7 @@
 import {
 	IsEmail,
 	IsNotEmpty,
+	IsOptional,
 	IsString,
 	Length,
 	Matches,
@@ -13,16 +14,16 @@ import { IsPasswordsMatch } from '../../../common/decorators/is-pwds-match.decor
 
 export class SignupDto {
 	@IsString()
-	@IsNotEmpty()
+	@IsOptional()
 	@Length(2, 255)
 	@Matches(
-		/^(?!.*['\u2019]{2})(?!.* {2})(?!['\u2019 ])[a-zA-Zа-яА-ЯёЁіІїЇєЄґҐ'’\- ]+(?<!['\u2019 ])$/,
+		/^(?!.*['\u2019]{2})(?!.* {2})(?!['\u2019 ])[a-zA-Zа-яА-ЯёЁіІїЇєЄґҐ''\- ]+(?<!['\u2019 ])$/,
 		{
 			message:
 				'Name must contain only letters, single apostrophes or spaces (no repeats), and must not start or end with a space or apostrophe',
 		},
 	)
-	name: string;
+	name?: string;
 
 	@IsString()
 	@IsNotEmpty()
@@ -59,7 +60,7 @@ export class LoginDto {
 }
 
 export type SignupMeta = {
-	name: string;
+	name?: string
 	username: string;
 	email: string;
 	password: string;

@@ -38,9 +38,9 @@ async function main() {
 		},
 	});
 
-	console.log('✔ Admin default channel created/exists:', defaultChannel.username);
+	console.log('Admin default channel created/exists:', defaultChannel.username);
 
-	console.log('🌱 Seed completed successfully!');
+	console.log('Seed completed successfully!');
 }
 
 main()

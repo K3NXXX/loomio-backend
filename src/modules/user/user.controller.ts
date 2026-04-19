@@ -23,6 +23,7 @@ import { SearchUsersDto } from './dto/search-users.dto';
 import { UpdateThemeDto } from './dto/theme.dto';
 import { UpdateAccountDto } from './dto/update-account.dto';
 import { UserService } from './user.service';
+import { UpdateLocaleDto } from './dto/update-locale.dto';
 
 @Authorization()
 @Controller('user')
@@ -68,6 +69,19 @@ export class UserController {
 		res.json({ message: 'Theme updated', theme: user.theme });
 	}
 
+	@Patch('locale')
+	async updateLocale(
+		@CurrentUser('id') userId: string,
+		@Body() dto: UpdateLocaleDto,
+		@Res() res: Response,
+	) {
+		const user = await this.userService.updateLocale(userId, dto.locale);
+
+		this.cookieService.setPreferenceCookie(res, 'locale', user.locale.toLowerCase());
+
+		res.json({ message: 'Locale updated', locale: user.locale });
+	}
+
 	@Patch('update')
 	async updateAccount(@CurrentUser('id') userId: string, @Body() dto: UpdateAccountDto) {
 		return this.userService.updateAccount(userId, dto);
@@ -100,5 +114,4 @@ export class UserController {
 	getFollowedChannels(@CurrentUser('id') userId: string) {
 		return this.userService.getFollowedChannels(userId);
 	}
-
 }

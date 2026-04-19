@@ -62,4 +62,18 @@ export class CookieService {
 			expires: new Date(0),
 		});
 	}
+
+	setPreferenceCookie(res: Response, key: string, value: string) {
+		res.cookie(key, value, {
+			...this.baseOptions(false),
+			maxAge: 1000 * 60 * 60 * 24 * 30,
+		});
+	}
+
+	clearPreferenceCookie(res: Response, key: string) {
+		res.cookie(key, '', {
+			...this.baseOptions(false),
+			expires: new Date(0),
+		});
+	}
 }

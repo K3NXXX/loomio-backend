@@ -6,7 +6,7 @@ import {
 	NotFoundException,
 	UnauthorizedException,
 } from '@nestjs/common';
-import { Prisma, User } from '@prisma/client';
+import { Locale, Prisma, User } from '@prisma/client';
 import { argon2id, hash, verify } from 'argon2';
 
 import { PrismaService } from '@/common/prisma/prisma.service';
@@ -27,7 +27,7 @@ export class UserService {
 
 	async create(dto: SignupDto | (OAuthDto & { password?: string | null })) {
 		const data: Prisma.UserCreateInput = {
-			name: dto.name.trim(),
+			name: dto.name?.trim() ?? null,
 			username: dto.username.trim().toLowerCase(),
 			email: dto.email.trim().toLowerCase(),
 			avatarUrl: 'avatarUrl' in dto ? (dto.avatarUrl ?? null) : null,
@@ -51,6 +51,7 @@ export class UserService {
 					providerEmail: dto.providerEmail?.trim().toLowerCase() ?? null,
 					avatarUrl: dto.avatarUrl ?? null,
 					password: null,
+					locale: 'UK',
 				},
 			});
 
@@ -172,6 +173,13 @@ export class UserService {
 				id: true,
 				theme: true,
 			},
+		});
+	}
+
+	async updateLocale(userId: string, locale: Locale) {
+		return this.prisma.user.update({
+			where: { id: userId },
+			data: { locale },
 		});
 	}
 
