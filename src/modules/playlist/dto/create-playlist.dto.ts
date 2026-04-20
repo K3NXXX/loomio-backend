@@ -9,4 +9,7 @@ export class CreatePlaylistDto {
 	@IsString()
 	@MaxLength(500)
 	description?: string;
+
+	@IsOptional()
+	cover?: any;
 }

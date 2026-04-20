@@ -1,9 +1,20 @@
 import { Authorization } from '@/common/decorators/auth.decorators';
 import { CurrentUser } from '@/common/decorators/user.decorator';
-import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/common';
+import {
+	Body,
+	Controller,
+	Delete,
+	Get,
+	Param,
+	Patch,
+	Post,
+	UploadedFiles,
+	UseInterceptors,
+} from '@nestjs/common';
 import { CreatePlaylistDto } from './dto/create-playlist.dto';
 import { UpdatePlaylistDto } from './dto/update-playlist.dto';
 import { PlaylistService } from './playlist.service';
+import { FileFieldsInterceptor } from '@nestjs/platform-express';
 
 @Controller('playlist')
 export class PlaylistController {
@@ -11,8 +22,13 @@ export class PlaylistController {
 
 	@Authorization()
 	@Post()
-	create(@CurrentUser('id') userId: string, @Body() dto: CreatePlaylistDto) {
-		return this.playlistService.create(userId, dto);
+	@UseInterceptors(FileFieldsInterceptor([{ name: 'cover', maxCount: 1 }]))
+	create(
+		@CurrentUser('id') userId: string,
+		@Body() dto: CreatePlaylistDto,
+		@UploadedFiles() files: { cover?: Express.Multer.File[] },
+	) {
+		return this.playlistService.create(userId, dto, files);
 	}
 
 	@Authorization()
@@ -29,12 +45,14 @@ export class PlaylistController {
 
 	@Authorization()
 	@Patch(':id')
+	@UseInterceptors(FileFieldsInterceptor([{ name: 'cover', maxCount: 1 }]))
 	update(
 		@CurrentUser('id') userId: string,
 		@Param('id') id: string,
 		@Body() dto: UpdatePlaylistDto,
+		@UploadedFiles() files?: { cover?: Express.Multer.File[] },
 	) {
-		return this.playlistService.update(userId, id, dto);
+		return this.playlistService.update(userId, id, dto, files);
 	}
 
 	@Authorization()

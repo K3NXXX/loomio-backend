@@ -93,7 +93,6 @@ export class SearchService {
 		];
 	}
 
-
 	async search(query: string) {
 		if (!query.trim()) return { videos: [], channels: [] };
 
@@ -121,7 +120,6 @@ export class SearchService {
 
 		const textKeywords = cleanedQuery.split(/\s+/).filter(Boolean);
 		const mainKeyword = textKeywords[0] || '';
-
 
 		let videosWhere: Prisma.VideoWhereInput;
 
@@ -157,7 +155,6 @@ export class SearchService {
 				],
 			};
 		} else if (mainKeyword) {
-
 			videosWhere = {
 				OR: [
 					{ title: { contains: mainKeyword, mode: Prisma.QueryMode.insensitive } },
@@ -181,7 +178,7 @@ export class SearchService {
 						createdAt: true,
 						_count: { select: { views: true } },
 						channel: {
-							select: { id: true, name: true, username: true, avatarUrl: true },
+							select: { id: true, name: true, username: true, avatarUrl: true, userId: true },
 						},
 					},
 				})
@@ -198,7 +195,7 @@ export class SearchService {
 				createdAt: true,
 				_count: { select: { views: true } },
 				channel: {
-					select: { id: true, name: true, username: true, avatarUrl: true },
+					select: { id: true, name: true, username: true, avatarUrl: true, userId: true },
 				},
 			},
 			orderBy: { createdAt: 'desc' },

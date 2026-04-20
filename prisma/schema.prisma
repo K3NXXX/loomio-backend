@@ -233,6 +233,8 @@ model Playlist {
   id          String  @id @default(uuid())
   name        String
   description String?
+  coverUrl      String?
+  coverPublicId String?
   userId      String
   user        User    @relation(fields: [userId], references: [id])
 

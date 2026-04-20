@@ -111,6 +111,7 @@ export class VideosService {
 						username: true,
 						name: true,
 						avatarUrl: true,
+						userId: true,
 						_count: { select: { followers: true } },
 					},
 				},
