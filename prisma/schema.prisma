@@ -235,8 +235,9 @@ model Playlist {
   description String?
   coverUrl      String?
   coverPublicId String?
-  userId      String
-  user        User    @relation(fields: [userId], references: [id])
+
+  userId String?
+  user   User? @relation(fields: [userId], references: [id])
 
   channelId String?
   channel   Channel? @relation(fields: [channelId], references: [id])

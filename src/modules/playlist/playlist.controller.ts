@@ -38,9 +38,23 @@ export class PlaylistController {
 	}
 
 	@Authorization()
-	@Get(':id')
-	getById(@CurrentUser('id') userId: string, @Param('id') id: string) {
-		return this.playlistService.getById(userId, id);
+	@Get('channel-playlist/:playlistId')
+	getChannelPlaylistById(
+		@CurrentUser('id') userId: string,
+		@Param('playlistId') playlistId: string,
+	) {
+		return this.playlistService.getChannelPlaylistById(userId, playlistId);
+	}
+
+	@Get('channel/:channelId')
+	getChannelPlaylists(@Param('channelId') channelId: string) {
+		return this.playlistService.getChannelPlaylists(channelId);
+	}
+
+	@Authorization()
+	@Delete(':id')
+	delete(@CurrentUser('id') userId: string, @Param('id') id: string) {
+		return this.playlistService.delete(userId, id);
 	}
 
 	@Authorization()
@@ -56,8 +70,8 @@ export class PlaylistController {
 	}
 
 	@Authorization()
-	@Delete(':id')
-	delete(@CurrentUser('id') userId: string, @Param('id') id: string) {
-		return this.playlistService.delete(userId, id);
+	@Get(':id')
+	getById(@CurrentUser('id') userId: string, @Param('id') id: string) {
+		return this.playlistService.getById(userId, id);
 	}
 }

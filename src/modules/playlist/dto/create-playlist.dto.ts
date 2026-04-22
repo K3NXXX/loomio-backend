@@ -12,4 +12,8 @@ export class CreatePlaylistDto {
 
 	@IsOptional()
 	cover?: any;
+
+	@IsOptional()
+	@IsString()
+	channelId?: string;
 }

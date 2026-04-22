@@ -27,21 +27,33 @@ export class PlaylistService {
 			coverPublicId = uploaded.id;
 		}
 
-		return await this.prisma.playlist.create({
+		if (dto.channelId) {
+			const channel = await this.prisma.channel.findUnique({
+				where: { id: dto.channelId },
+				select: { userId: true },
+			});
+
+			if (!channel) throw new NotFoundException('Channel not found');
+			if (channel.userId !== userId) throw new ForbiddenException('Not your channel');
+
+			return this.prisma.playlist.create({
+				data: {
+					name: dto.name.trim(),
+					description: dto.description?.trim() || null,
+					coverUrl,
+					coverPublicId,
+					channelId: dto.channelId,
+				},
+			});
+		}
+
+		return this.prisma.playlist.create({
 			data: {
 				name: dto.name.trim(),
 				description: dto.description?.trim() || null,
 				coverUrl,
 				coverPublicId,
 				userId,
-			},
-			select: {
-				id: true,
-				name: true,
-				description: true,
-				coverUrl: true,
-				createdAt: true,
-				updatedAt: true,
 			},
 		});
 	}
@@ -74,10 +86,32 @@ export class PlaylistService {
 			);
 	}
 
+	getChannelPlaylists(channelId: string) {
+		return this.prisma.playlist.findMany({
+			where: { channelId },
+			orderBy: { createdAt: 'desc' },
+			select: {
+				id: true,
+				name: true,
+				description: true,
+				coverUrl: true,
+				createdAt: true,
+				updatedAt: true,
+				_count: { select: { videos: true } },
+				videos: {
+					select: { id: true, thumbnailFile: true },
+					orderBy: { createdAt: 'asc' },
+					take: 1,
+				},
+			},
+		});
+	}
+
 	async getById(userId: string, playlistId: string) {
 		const playlist = await this.prisma.playlist.findUnique({
 			where: { id: playlistId },
 			include: {
+				channel: { select: { userId: true } },
 				videos: {
 					select: {
 						id: true,
@@ -92,7 +126,42 @@ export class PlaylistService {
 		});
 
 		if (!playlist) throw new NotFoundException('Playlist not found');
-		if (playlist.userId !== userId) throw new ForbiddenException('You are not the owner');
+
+		if (playlist.channelId) {
+			if (playlist.channel?.userId !== userId)
+				throw new ForbiddenException('You are not the owner');
+		} else {
+			if (playlist.userId !== userId) throw new ForbiddenException('You are not the owner');
+		}
+
+		return {
+			...playlist,
+			coverUrl:
+				playlist.coverUrl ?? playlist.videos[playlist.videos.length - 1]?.thumbnailFile ?? null,
+		};
+	}
+
+	async getChannelPlaylistById(userId: string, playlistId: string) {
+		const playlist = await this.prisma.playlist.findUnique({
+			where: { id: playlistId },
+			include: {
+				channel: { select: { userId: true } },
+				videos: {
+					select: {
+						id: true,
+						title: true,
+						thumbnailFile: true,
+						createdAt: true,
+						_count: { select: { views: true } },
+					},
+					orderBy: { createdAt: 'desc' },
+				},
+			},
+		});
+
+		if (!playlist) throw new NotFoundException('Playlist not found');
+		if (!playlist.channelId) throw new BadRequestException('Not a channel playlist');
+		if (playlist.channel?.userId !== userId) throw new ForbiddenException('Not your channel');
 
 		return {
 			...playlist,
@@ -109,11 +178,20 @@ export class PlaylistService {
 	) {
 		const playlist = await this.prisma.playlist.findUnique({
 			where: { id: playlistId },
-			select: { userId: true, coverPublicId: true },
+			select: { userId: true, coverPublicId: true, channelId: true },
 		});
 
 		if (!playlist) throw new NotFoundException('Playlist not found');
-		if (playlist.userId !== userId) throw new ForbiddenException('You are not the owner');
+		if (playlist.channelId) {
+			const channel = await this.prisma.channel.findUnique({
+				where: { id: playlist.channelId },
+				select: { userId: true },
+			});
+
+			if (channel?.userId !== userId) throw new ForbiddenException('Not your channel');
+		} else {
+			if (playlist.userId !== userId) throw new ForbiddenException('Not your playlist');
+		}
 
 		let coverUrl: string | null | undefined;
 		let coverPublicId: string | null | undefined;
@@ -155,10 +233,19 @@ export class PlaylistService {
 	async delete(userId: string, playlistId: string) {
 		const playlist = await this.prisma.playlist.findUnique({
 			where: { id: playlistId },
-			select: { userId: true, coverPublicId: true },
+			select: { userId: true, coverPublicId: true, channelId: true },
 		});
 		if (!playlist) throw new NotFoundException('Playlist not found');
-		if (playlist.userId !== userId) throw new ForbiddenException('You are not the owner');
+		if (playlist.channelId) {
+			const channel = await this.prisma.channel.findUnique({
+				where: { id: playlist.channelId },
+				select: { userId: true },
+			});
+
+			if (channel?.userId !== userId) throw new ForbiddenException();
+		} else {
+			if (playlist.userId !== userId) throw new ForbiddenException();
+		}
 
 		if (playlist.coverPublicId) {
 			await this.cloudflareImages.deleteImage(playlist.coverPublicId);

@@ -16,4 +16,8 @@ export class UpdatePlaylistDto {
 	@Transform(({ value }) => value === 'true' || value === true)
 	@IsBoolean()
 	removeCover?: boolean;
+
+	@IsOptional()
+	@IsString()
+	channelId?: string;
 }
