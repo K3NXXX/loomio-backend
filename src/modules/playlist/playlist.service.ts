@@ -58,7 +58,59 @@ export class PlaylistService {
 		});
 	}
 
-	getUserPlaylists(userId: string) {
+	async removeVideosFromPlaylist(userId: string, playlistId: string, videoIds: string[]) {
+		const playlist = await this.prisma.playlist.findUnique({
+			where: { id: playlistId },
+			include: { channel: { select: { userId: true } } },
+		});
+
+		if (!playlist) throw new NotFoundException('Playlist not found');
+
+		if (playlist.channelId) {
+			if (playlist.channel?.userId !== userId) throw new ForbiddenException('Not your channel');
+		} else {
+			if (playlist.userId !== userId) throw new ForbiddenException('Not your playlist');
+		}
+
+		await this.prisma.playlist.update({
+			where: { id: playlistId },
+			data: {
+				videos: {
+					disconnect: videoIds.map((id) => ({ id })),
+				},
+			},
+		});
+
+		return { removed: videoIds.length };
+	}
+
+	async addVideosToPlaylist(userId: string, playlistId: string, videoIds: string[]) {
+		const playlist = await this.prisma.playlist.findUnique({
+			where: { id: playlistId },
+			include: { channel: { select: { userId: true } } },
+		});
+
+		if (!playlist) throw new NotFoundException('Playlist not found');
+
+		if (playlist.channelId) {
+			if (playlist.channel?.userId !== userId) throw new ForbiddenException('Not your channel');
+		} else {
+			if (playlist.userId !== userId) throw new ForbiddenException('Not your playlist');
+		}
+
+		await this.prisma.playlist.update({
+			where: { id: playlistId },
+			data: {
+				videos: {
+					connect: videoIds.map((id) => ({ id })),
+				},
+			},
+		});
+
+		return { added: videoIds.length };
+	}
+
+	async getUserPlaylists(userId: string) {
 		return this.prisma.playlist
 			.findMany({
 				where: { userId },
@@ -168,6 +220,27 @@ export class PlaylistService {
 			coverUrl:
 				playlist.coverUrl ?? playlist.videos[playlist.videos.length - 1]?.thumbnailFile ?? null,
 		};
+	}
+
+	async getPublicPlaylistById(playlistId: string) {
+		const playlist = await this.prisma.playlist.findUnique({
+			where: { id: playlistId },
+			include: {
+				videos: {
+					select: {
+						id: true,
+						title: true,
+						thumbnailFile: true,
+						createdAt: true,
+						_count: { select: { views: true } },
+					},
+					orderBy: { createdAt: 'desc' },
+				},
+			},
+		});
+
+		if (!playlist) throw new NotFoundException('Playlist not found');
+		return playlist;
 	}
 
 	async update(

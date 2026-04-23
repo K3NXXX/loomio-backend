@@ -15,6 +15,7 @@ import { CreatePlaylistDto } from './dto/create-playlist.dto';
 import { UpdatePlaylistDto } from './dto/update-playlist.dto';
 import { PlaylistService } from './playlist.service';
 import { FileFieldsInterceptor } from '@nestjs/platform-express';
+import { AddVideosToPlaylistDto } from './dto/add-videos-to-playlist';
 
 @Controller('playlist')
 export class PlaylistController {
@@ -67,6 +68,31 @@ export class PlaylistController {
 		@UploadedFiles() files?: { cover?: Express.Multer.File[] },
 	) {
 		return this.playlistService.update(userId, id, dto, files);
+	}
+
+	@Authorization()
+	@Patch(':id/videos')
+	addVideosToPlaylist(
+		@CurrentUser('id') userId: string,
+		@Param('id') id: string,
+		@Body() dto: AddVideosToPlaylistDto,
+	) {
+		return this.playlistService.addVideosToPlaylist(userId, id, dto.videoIds);
+	}
+
+	@Authorization()
+	@Delete(':id/videos')
+	removeVideosFromPlaylist(
+		@CurrentUser('id') userId: string,
+		@Param('id') id: string,
+		@Body() dto: AddVideosToPlaylistDto,
+	) {
+		return this.playlistService.removeVideosFromPlaylist(userId, id, dto.videoIds);
+	}
+
+	@Get('public/:playlistId')
+	getPublicPlaylistById(@Param('playlistId') playlistId: string) {
+		return this.playlistService.getPublicPlaylistById(playlistId);
 	}
 
 	@Authorization()

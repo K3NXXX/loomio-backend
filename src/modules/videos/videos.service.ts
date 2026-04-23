@@ -376,6 +376,32 @@ export class VideosService {
 		});
 	}
 
+	async addVideosToPlaylist(userId: string, playlistId: string, videoIds: string[]) {
+		const playlist = await this.prisma.playlist.findUnique({
+			where: { id: playlistId },
+			include: { channel: { select: { userId: true } } },
+		});
+
+		if (!playlist) throw new NotFoundException('Playlist not found');
+
+		if (playlist.channelId) {
+			if (playlist.channel?.userId !== userId) throw new ForbiddenException('Not your channel');
+		} else {
+			if (playlist.userId !== userId) throw new ForbiddenException('Not your playlist');
+		}
+
+		await this.prisma.playlist.update({
+			where: { id: playlistId },
+			data: {
+				videos: {
+					connect: videoIds.map((id) => ({ id })),
+				},
+			},
+		});
+
+		return { added: videoIds.length };
+	}
+
 	async removeFromUserPlaylist(userId: string, videoId: string, playlistId: string) {
 		const video = await this.prisma.video.findUnique({ where: { id: videoId } });
 		if (!video) throw new NotFoundException('Video not found');
