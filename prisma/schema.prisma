@@ -15,7 +15,7 @@ model User {
   email    String  @unique @db.VarChar(255)
   providerEmail String? @map("provider_email") @db.VarChar(255)
   password String? @db.VarChar(255)
-
+  isPremium Boolean @default(false)
   avatarUrl      String? @map("avatar_url")
   avatarPublicId String? @map("avatar_public_id")
 

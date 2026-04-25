@@ -1,4 +1,3 @@
-import { CloudinaryService } from '@/common/libs/cloudinary/cloudinary.service';
 import { PrismaService } from '@/common/prisma/prisma.service';
 import {
 	BadRequestException,
@@ -7,7 +6,6 @@ import {
 	InternalServerErrorException,
 	NotFoundException,
 } from '@nestjs/common';
-import { UploadApiResponse } from 'cloudinary';
 import { CreateChannelDto } from './dto/create-channel.dto';
 import { UpdateChannelDto } from './dto/edit-channel.dto';
 import { CloudflareImagesService } from '@/common/libs/cloudflare/cloudflare-images.service';
@@ -18,7 +16,6 @@ type Files = { avatar?: Express.Multer.File; banner?: Express.Multer.File };
 export class ChannelService {
 	constructor(
 		private readonly prisma: PrismaService,
-		private readonly cloudinary: CloudinaryService,
 		private readonly cloudflareImages: CloudflareImagesService,
 	) {}
 
@@ -160,23 +157,28 @@ export class ChannelService {
 			dto.username = normalized;
 		}
 
-		let uploadedAvatar: UploadApiResponse | null = null;
-		let uploadedBanner: UploadApiResponse | null = null;
+		let uploadedAvatar: { id: string; url: string } | null = null;
+		let uploadedBanner: { id: string; url: string } | null = null;
 
 		try {
 			if (files.avatar) {
-				uploadedAvatar = await this.cloudinary.uploadFile(files.avatar, {
-					resource_type: 'image',
-					folder: 'channels/avatars',
-					invalidate: true,
-				});
+				try {
+					uploadedAvatar = await this.cloudflareImages.uploadImage(files.avatar);
+				} catch {
+					throw new BadRequestException('Failed to upload channel avatar');
+				}
 			}
 			if (files.banner) {
-				uploadedBanner = await this.cloudinary.uploadFile(files.banner, {
-					resource_type: 'image',
-					folder: 'channels/banners',
-					invalidate: true,
-				});
+				try {
+					uploadedBanner = await this.cloudflareImages.uploadImage(files.banner);
+				} catch {
+					if (uploadedAvatar?.id) {
+						try {
+							await this.cloudflareImages.deleteImage(uploadedAvatar.id);
+						} catch {}
+					}
+					throw new BadRequestException('Failed to upload channel banner');
+				}
 			}
 
 			const data: any = {
@@ -184,12 +186,12 @@ export class ChannelService {
 				...(dto.username !== undefined ? { username: dto.username } : {}),
 				...(dto.description !== undefined ? { description: dto.description } : {}),
 				...(uploadedAvatar && {
-					avatarUrl: uploadedAvatar.secure_url,
-					avatarPublicId: uploadedAvatar.public_id,
+					avatarUrl: uploadedAvatar.url,
+					avatarPublicId: uploadedAvatar.id,
 				}),
 				...(uploadedBanner && {
-					bannerUrl: uploadedBanner.secure_url,
-					bannerPublicId: uploadedBanner.public_id,
+					bannerUrl: uploadedBanner.url,
+					bannerPublicId: uploadedBanner.id,
 				}),
 			};
 
@@ -218,25 +220,25 @@ export class ChannelService {
 			});
 
 			if (uploadedAvatar && ch.avatarPublicId) {
-				this.cloudinary.deleteFile(ch.avatarPublicId).catch(() => {});
+				this.cloudflareImages.deleteImage(ch.avatarPublicId).catch(() => {});
 			}
 			if (uploadedBanner && ch.bannerPublicId) {
-				this.cloudinary.deleteFile(ch.bannerPublicId).catch(() => {});
+				this.cloudflareImages.deleteImage(ch.bannerPublicId).catch(() => {});
 			}
 			if (dto.removeAvatar && ch.avatarPublicId) {
-				this.cloudinary.deleteFile(ch.avatarPublicId).catch(() => {});
+				this.cloudflareImages.deleteImage(ch.avatarPublicId).catch(() => {});
 			}
 			if (dto.removeBanner && ch.bannerPublicId) {
-				this.cloudinary.deleteFile(ch.bannerPublicId).catch(() => {});
+				this.cloudflareImages.deleteImage(ch.bannerPublicId).catch(() => {});
 			}
 
 			return updated;
 		} catch (err: any) {
-			if (uploadedAvatar?.public_id) {
-				this.cloudinary.deleteFile(uploadedAvatar.public_id).catch(() => {});
+			if (uploadedAvatar?.id) {
+				this.cloudflareImages.deleteImage(uploadedAvatar.id).catch(() => {});
 			}
-			if (uploadedBanner?.public_id) {
-				this.cloudinary.deleteFile(uploadedBanner.public_id).catch(() => {});
+			if (uploadedBanner?.id) {
+				this.cloudflareImages.deleteImage(uploadedBanner.id).catch(() => {});
 			}
 
 			if (err?.code === 'P2002') {
@@ -290,11 +292,11 @@ export class ChannelService {
 		const deletions: Promise<any>[] = [];
 
 		if (channel.avatarPublicId) {
-			deletions.push(this.cloudinary.deleteFile(channel.avatarPublicId).catch(() => {}));
+			deletions.push(this.cloudflareImages.deleteImage(channel.avatarPublicId).catch(() => {}));
 		}
 
 		if (channel.bannerPublicId) {
-			deletions.push(this.cloudinary.deleteFile(channel.bannerPublicId).catch(() => {}));
+			deletions.push(this.cloudflareImages.deleteImage(channel.bannerPublicId).catch(() => {}));
 		}
 
 		await Promise.all(deletions);

@@ -107,7 +107,8 @@ export class UserService {
 				isActive: true,
 				theme: true,
 				role: true,
-				password: true, // 👈 додаємо
+				isPremium: true,
+				password: true,
 				accounts: {
 					select: {
 						provider: true,
@@ -131,6 +132,7 @@ export class UserService {
 			isActive: user.isActive,
 			theme: user.theme,
 			role: user.role,
+			isPremium: user.isPremium,
 
 			hasPassword,
 			authProviders,

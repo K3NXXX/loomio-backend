@@ -15,8 +15,9 @@ import { SearchModule } from './modules/search/search.module';
 import { UserModule } from './modules/user/user.module';
 import { VideosModule } from './modules/videos/videos.module';
 import { ViewModule } from './modules/view/view.module';
-import { NotificationModule } from './modules/notification/notification.module'
-import { ReportModule } from './modules/report/report.module'
+import { NotificationModule } from './modules/notification/notification.module';
+import { ReportModule } from './modules/report/report.module';
+import { PaymentsModule } from './modules/payment/payment.module';
 
 @Module({
 	imports: [
@@ -34,7 +35,8 @@ import { ReportModule } from './modules/report/report.module'
 		SearchModule,
 		PlaylistModule,
 		NotificationModule,
-		ReportModule
+		ReportModule,
+		PaymentsModule,
 	],
 	controllers: [AppController],
 	providers: [AppService],

@@ -8,7 +8,7 @@ import helmet from 'helmet';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
-	const app = await NestFactory.create(AppModule);
+	const app = await NestFactory.create(AppModule, { rawBody: true });
 	const config = app.get(ConfigService);
 
 	const expressApp = app.getHttpAdapter().getInstance() as express.Application;
@@ -29,8 +29,6 @@ async function bootstrap() {
 			transform: true,
 		}),
 	);
-
-	
 
 	await app.listen(config.getOrThrow<number>('PORT'));
 }
