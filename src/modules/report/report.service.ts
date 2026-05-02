@@ -5,6 +5,8 @@ import { Audience, NotificationType, ReportReason } from '@prisma/client';
 import { NotificationsGateway } from '../notification/notification.gateway';
 import { NotificationService } from '../notification/notification.service';
 import { CreateReportDto } from './dto/create-report.dto';
+import { RequestReviewDto } from './dto/request-review.dto';
+import { RestrictVideoDto } from './dto/restrict-video.dto';
 
 @Injectable()
 export class ReportService {
@@ -183,6 +185,8 @@ export class ReportService {
 						title: true,
 						thumbnailFile: true,
 						videoFile: true,
+						restrictionModeratorReason: true,
+						restrictionModeratorNote: true,
 						channel: {
 							select: {
 								id: true,
@@ -337,14 +341,28 @@ export class ReportService {
 		});
 	}
 
-	async reportVideo(reportId: string, moderatorId: string) {
+	private buildVideoRestrictedNotificationMessage(
+		reason: ReportReason,
+		moderatorNote?: string | null,
+	): string {
+		const sep = '\n---\n';
+		const code = reason;
+		const trimmed = moderatorNote?.trim();
+		if (!trimmed) return code;
+		let body = `${code}${sep}${trimmed}`;
+		const max = 500;
+		if (body.length <= max) return body;
+		const maxNote = max - code.length - sep.length;
+		return `${code}${sep}${trimmed.slice(0, Math.max(0, maxNote))}`;
+	}
+
+	async reportVideo(reportId: string, moderatorId: string, dto: RestrictVideoDto) {
 		const report = await this.prisma.report.findUnique({
 			where: { id: reportId },
 			select: {
 				videoId: true,
 				assignedToId: true,
 				status: true,
-				reason: true,
 				video: {
 					select: {
 						id: true,
@@ -370,14 +388,23 @@ export class ReportService {
 
 		await this.prisma.video.update({
 			where: { id: report.videoId },
-			data: { visibility: 'restricted' },
+			data: {
+				visibility: 'restricted',
+				restrictionModeratorReason: dto.reason,
+				restrictionModeratorNote: dto.moderatorNote?.trim() || null,
+			},
 		});
 
 		if (!report.video?.channel?.userId) throw new BadRequestException('Video owner not found');
 
+		const notificationMessage = this.buildVideoRestrictedNotificationMessage(
+			dto.reason,
+			dto.moderatorNote,
+		);
+
 		const notification = await this.notificationService.create({
 			type: NotificationType.VIDEO_RESTRICTED,
-			message: `Your video was restricted for ${report.reason.toLowerCase().replace(/_/g, ' ')}`,
+			message: notificationMessage,
 			userId: report.video.channel.userId,
 			authorId: moderatorId,
 			channelId: report.video.channel.id,
@@ -396,13 +423,17 @@ export class ReportService {
 
 		return this.prisma.report.update({
 			where: { id: reportId },
-			data: { status: 'RESOLVED' },
+			data: {
+				status: 'RESOLVED',
+				moderatorRestrictionReason: dto.reason,
+				moderatorNote: dto.moderatorNote?.trim() || null,
+			},
 		});
 	}
 
 	async requestReviewUpload(
 		videoId: string,
-		dto,
+		dto: RequestReviewDto,
 		files: { video?: Express.Multer.File[]; thumbnail?: Express.Multer.File[] },
 		userId: string,
 	) {
@@ -419,15 +450,27 @@ export class ReportService {
 
 		if (!video) throw new BadRequestException('Video not found');
 		if (video.channel.userId !== userId) throw new BadRequestException('Not your video');
-		if (video.visibility !== 'restricted') throw new BadRequestException('Video is not restricted');
+		if (video.visibility !== 'restricted')
+			throw new BadRequestException('Video is not restricted — submit review only while restricted');
 
+		const cfUid = dto.videoPublicId?.trim();
 		const newVideoFile = files.video?.[0];
-		if (!newVideoFile) throw new BadRequestException('New video file required');
 
-		const uploadedVideo = await this.cloudinary.uploadFile(newVideoFile, {
-			resource_type: 'video',
-			folder: 'videos/review',
-		});
+		if (!cfUid && !newVideoFile) {
+			throw new BadRequestException('New video file or videoPublicId required');
+		}
+
+		let videoFileUrl: string;
+
+		if (cfUid) {
+			videoFileUrl = `https://videodelivery.net/${cfUid}/manifest/video.m3u8`;
+		} else {
+			const uploadedVideo = await this.cloudinary.uploadFile(newVideoFile!, {
+				resource_type: 'video',
+				folder: 'videos/review',
+			});
+			videoFileUrl = uploadedVideo.secure_url;
+		}
 
 		let newThumbnailUrl = video.thumbnailFile;
 		if (files.thumbnail?.[0]) {
@@ -445,9 +488,10 @@ export class ReportService {
 				description: dto.description,
 				tags: dto.tags,
 				audience: dto.audience as Audience,
-				videoFile: uploadedVideo.secure_url,
+				videoFile: videoFileUrl,
+				videoPublicId: cfUid ?? null,
 				thumbnailFile: newThumbnailUrl,
-				visibility: 'restricted',
+				visibility: 'pending_review',
 				publishDate: null,
 			},
 		});
@@ -547,13 +591,17 @@ export class ReportService {
 
 		await this.prisma.video.update({
 			where: { id: report.videoId },
-			data: { visibility: 'public' },
+			data: {
+				visibility: 'public',
+				restrictionModeratorReason: null,
+				restrictionModeratorNote: null,
+			},
 		});
 
 		const notification = await this.notificationService.create({
 			type: NotificationType.VIDEO_APPROVED,
 			message: 'Your video has been approved and is now public',
-			userId: report.video.channel.userId, 
+			userId: report.video.channel.userId,
 			authorId: moderatorId,
 			videoId: report.video.id,
 			channelId: report.video.channel.id,

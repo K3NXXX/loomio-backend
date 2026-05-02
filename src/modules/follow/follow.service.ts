@@ -41,6 +41,7 @@ export class FollowService {
 			data: {
 				followerId,
 				channelId,
+				notificationsEnabled: true,
 			},
 		});
 

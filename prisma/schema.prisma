@@ -89,7 +89,7 @@ model ChannelFollow {
   channel   Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
   channelId String
 
-  notificationsEnabled Boolean @default(false)
+  notificationsEnabled Boolean @default(true)
 
   createdAt DateTime @default(now())
 
@@ -104,6 +104,10 @@ model Video {
   description   String?     @db.Text
   tags          String?     @db.VarChar(500)
   visibility    Visibility
+  /// Snapshot from moderator action when visibility becomes restricted (fallback: latest resolved report)
+  restrictionModeratorReason ReportReason? @map("restriction_moderator_reason")
+  restrictionModeratorNote   String?       @map("restriction_moderator_note") @db.Text
+
   audience      Audience
   publishType   PublishType
   publishDate   DateTime?
@@ -316,6 +320,10 @@ model Report {
   assignedToId String?
   assignedTo   User?   @relation("ReportAssignedTo", fields: [assignedToId], references: [id])
 
+  /// Reason recorded when a moderator restricts the video (may differ from reporter `reason`)
+  moderatorRestrictionReason ReportReason? @map("moderator_restriction_reason")
+  moderatorNote              String?       @map("moderator_note") @db.Text
+
   @@index([videoId])
   @@index([commentId])
   @@index([authorId])
@@ -345,6 +353,8 @@ enum Visibility {
   public
   private
   restricted
+  /// Owner resubmitted corrected video; awaiting moderator decision (not publicly visible)
+  pending_review
 }
 
 enum Audience {

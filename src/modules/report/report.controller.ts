@@ -17,6 +17,8 @@ import {
 import { FileFieldsInterceptor } from '@nestjs/platform-express';
 import { UserRole } from '@prisma/client';
 import { CreateReportDto } from './dto/create-report.dto';
+import { RequestReviewDto } from './dto/request-review.dto';
+import { RestrictVideoDto } from './dto/restrict-video.dto';
 import { ReportService } from './report.service';
 
 @Controller('reports')
@@ -102,8 +104,12 @@ export class ReportController {
 	@Post('report-video/:id')
 	@Role(UserRole.ADMIN)
 	@UseGuards(JwtGuard, RoleGuard)
-	reportVideo(@Param('id') id: string, @CurrentUser('id') userId: string) {
-		return this.reportService.reportVideo(id, userId);
+	reportVideo(
+		@Param('id') id: string,
+		@Body() dto: RestrictVideoDto,
+		@CurrentUser('id') userId: string,
+	) {
+		return this.reportService.reportVideo(id, userId, dto);
 	}
 
 	@Post('review/:videoId')
@@ -116,7 +122,7 @@ export class ReportController {
 	)
 	requestReview(
 		@Param('videoId') id: string,
-		@Body() dto,
+		@Body() dto: RequestReviewDto,
 		@UploadedFiles()
 		files: {
 			video?: Express.Multer.File[];

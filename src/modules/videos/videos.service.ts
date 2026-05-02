@@ -52,7 +52,7 @@ export class VideosService {
 
 		const channel = await this.prisma.channel.findUnique({
 			where: { id: channelId },
-			select: { id: true, userId: true },
+			select: { id: true, userId: true, name: true },
 		});
 
 		if (!channel) {
@@ -81,6 +81,38 @@ export class VideosService {
 					channelId,
 				},
 			});
+
+			if (publishType === 'now' && visibility === 'public') {
+				const followers = await this.prisma.channelFollow.findMany({
+					where: { channelId, notificationsEnabled: true },
+					select: { followerId: true },
+				});
+
+				const channelName = channel.name ?? 'Someone';
+
+				await Promise.all(
+					followers.map(async ({ followerId }) => {
+						const notification = await this.notificationService.create({
+							type: NotificationType.VIDEO_PUBLISHED,
+							message: `${channelName} published a new video: ${title}`,
+							userId: followerId,
+							authorId: userId,
+							channelId,
+							videoId: newVideo.id,
+						});
+
+						this.notificationsGateway.sendNotification(followerId, {
+							id: notification.id,
+							type: notification.type,
+							message: notification.message,
+							createdAt: notification.createdAt,
+							authorId: userId,
+							channelId,
+							videoId: newVideo.id,
+						});
+					}),
+				);
+			}
 
 			return { message: '✅ Video created', data: newVideo };
 		} catch (err: unknown) {
@@ -239,7 +271,13 @@ export class VideosService {
 			if (title !== undefined) data.title = title;
 			if (description !== undefined) data.description = description;
 			if (tags !== undefined) data.tags = tags;
-			if (visibility !== undefined) data.visibility = visibility;
+			if (visibility !== undefined) {
+				data.visibility = visibility;
+				if (visibility !== 'restricted' && visibility !== 'pending_review') {
+					data.restrictionModeratorReason = null;
+					data.restrictionModeratorNote = null;
+				}
+			}
 			if (audience !== undefined) data.audience = audience;
 			if (publishType !== undefined) data.publishType = publishType;
 
@@ -429,7 +467,7 @@ export class VideosService {
 	}
 
 	async findAllForChannelStudio(channelId: string) {
-		return this.prisma.video.findMany({
+		const videos = await this.prisma.video.findMany({
 			where: { channelId },
 			orderBy: { createdAt: 'desc' },
 			select: {
@@ -444,8 +482,67 @@ export class VideosService {
 				publishType: true,
 				publishDate: true,
 				createdAt: true,
+				restrictionModeratorReason: true,
+				restrictionModeratorNote: true,
 				_count: { select: { views: true, likes: true, comments: true } },
 			},
+		});
+
+		const moderationMetaVideoIds = videos
+			.filter(
+				(v) => v.visibility === 'restricted' || v.visibility === 'pending_review',
+			)
+			.map((v) => v.id);
+
+		if (moderationMetaVideoIds.length === 0) {
+			return videos;
+		}
+
+		const reports = await this.prisma.report.findMany({
+			where: {
+				videoId: { in: moderationMetaVideoIds },
+				OR: [
+					{ moderatorRestrictionReason: { not: null } },
+					{ moderatorNote: { not: null } },
+				],
+			},
+			orderBy: { createdAt: 'desc' },
+			select: {
+				videoId: true,
+				moderatorRestrictionReason: true,
+				moderatorNote: true,
+			},
+		});
+
+		const fallbackByVideoId = new Map<
+			string,
+			{
+				moderatorRestrictionReason: (typeof reports)[number]['moderatorRestrictionReason'];
+				moderatorNote: string | null;
+			}
+		>();
+
+		for (const r of reports) {
+			if (!r.videoId || fallbackByVideoId.has(r.videoId)) continue;
+			fallbackByVideoId.set(r.videoId, {
+				moderatorRestrictionReason: r.moderatorRestrictionReason,
+				moderatorNote: r.moderatorNote,
+			});
+		}
+
+		return videos.map((v) => {
+			const fb = fallbackByVideoId.get(v.id);
+			const needsMeta =
+				v.visibility === 'restricted' || v.visibility === 'pending_review';
+			if (!fb || !needsMeta) {
+				return v;
+			}
+			return {
+				...v,
+				restrictionModeratorReason:
+					v.restrictionModeratorReason ?? fb.moderatorRestrictionReason ?? null,
+				restrictionModeratorNote: v.restrictionModeratorNote ?? fb.moderatorNote ?? null,
+			};
 		});
 	}
 }

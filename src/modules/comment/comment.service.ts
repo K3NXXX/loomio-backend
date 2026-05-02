@@ -199,7 +199,10 @@ export class CommentService {
 		const { type } = dto;
 
 		return this.prisma.$transaction(async (tx) => {
-			const comment = await tx.videoComment.findUnique({ where: { id: commentId } });
+			const comment = await tx.videoComment.findUnique({
+				where: { id: commentId },
+				select: { id: true, userId: true, videoId: true },
+			});
 			if (!comment) throw new NotFoundException('Comment not found');
 
 			const existing = await tx.videoCommentReaction.findUnique({
@@ -218,6 +221,41 @@ export class CommentService {
 						dislikesCount: type === 'DISLIKE' ? { increment: 1 } : undefined,
 					},
 				});
+
+				if (type === 'LIKE' && comment.userId !== userId) {
+					const video = await tx.video.findUnique({
+						where: { id: comment.videoId },
+						select: { channel: { select: { id: true } } },
+					});
+
+					const author = await tx.user.findUnique({
+						where: { id: userId },
+						select: { username: true },
+					});
+
+					const username = author?.username ?? 'Someone';
+
+					const notification = await this.notificationService.create({
+						type: NotificationType.LIKE_COMMENT,
+						message: `${username} liked your comment`,
+						userId: comment.userId,
+						authorId: userId,
+						videoId: comment.videoId,
+						channelId: video?.channel.id,
+						commentId,
+					});
+
+					this.notificationsGateway.sendNotification(comment.userId, {
+						id: notification.id,
+						type: notification.type,
+						message: notification.message,
+						createdAt: notification.createdAt,
+						authorId: userId,
+						videoId: comment.videoId,
+						channelId: video?.channel.id,
+						commentId,
+					});
+				}
 
 				return { message: 'Reaction added' };
 			}

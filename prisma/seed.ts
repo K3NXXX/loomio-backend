@@ -24,7 +24,7 @@ async function main() {
 		},
 	});
 
-	console.log('✔ Admin created/exists:', admin.email);
+	console.log('Admin created/exists:', admin.email);
 
 	const defaultChannel = await prisma.channel.upsert({
 		where: { username: 'admin-channel' },
