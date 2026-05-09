@@ -1,5 +1,7 @@
 import { Authorization } from '@/common/decorators/auth.decorators';
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
+import { OptionalCurrentUser } from '@/common/decorators/optional-user.decorator';
+import { JwtOptionalGuard } from '@/common/guards/jwt-optional.guard';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { CurrentUser } from '../../common/decorators/user.decorator';
 import { CommentService } from './comment.service';
 import { CommentReactionDto } from './dto/comment-reaction.dto';
@@ -15,11 +17,11 @@ export class CommentController {
 		return this.commentService.create(userId, dto);
 	}
 
-	@Authorization()
+	@UseGuards(JwtOptionalGuard)
 	@Get('video/:videoId')
 	findAllForPost(
 		@Param('videoId') videoId: string,
-		@CurrentUser('id') userId: string,
+		@OptionalCurrentUser('id') userId: string | undefined,
 		@Query('page') page = '1',
 		@Query('take') take = '15',
 	) {

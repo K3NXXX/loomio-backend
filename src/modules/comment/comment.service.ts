@@ -139,7 +139,7 @@ export class CommentService {
 		return comment;
 	}
 
-	async findAllForVideo(videoId: string, userId: string, page: number, take: number) {
+	async findAllForVideo(videoId: string, userId: string | undefined, page: number, take: number) {
 		const video = await this.prisma.video.findUnique({ where: { id: videoId } });
 		if (!video) throw new NotFoundException('Post not found');
 

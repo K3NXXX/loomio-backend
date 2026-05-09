@@ -1,7 +1,7 @@
+import { OptionalCurrentUser } from '@/common/decorators/optional-user.decorator';
 import { JwtOptionalGuard } from '@/common/guards/jwt-optional.guard'; // створений як м'який гард
 import { Body, Controller, Get, Param, Post, Req, UseGuards } from '@nestjs/common';
 import { Request } from 'express';
-import { CurrentUser } from '../../common/decorators/user.decorator';
 import { CreateViewDto } from './dto/create-view.dto';
 import { ViewService } from './view.service';
 
@@ -13,7 +13,7 @@ export class ViewController {
 	@UseGuards(JwtOptionalGuard)
 	addView(
 		@Param('videoId') videoId: string,
-		@CurrentUser('id') userId: string | null, 
+		@OptionalCurrentUser('id') userId: string | undefined,
 		@Body() dto: CreateViewDto,
 		@Req() req: Request,
 	) {

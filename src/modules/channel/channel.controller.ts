@@ -68,7 +68,6 @@ export class ChannelController {
 		return this.channelService.update(userId, id, dto, { avatar, banner });
 	}
 
-	@Authorization()
 	@Get(':username/views')
 	async getChannelTotalViews(@Param('username') username: string) {
 		return this.channelService.getChannelTotalViews(username);
