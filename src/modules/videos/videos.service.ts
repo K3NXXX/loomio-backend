@@ -14,6 +14,7 @@ import { NotificationService } from '../notification/notification.service';
 import { CreateVideoDto } from './dto/create-video.dto';
 import { UpdateVideoDto } from './dto/update-video.dto';
 import { CloudflareStreamService } from '@/common/libs/cloudflare/cloudflare-stream.service';
+import { extractCloudflareStreamUidFromVideoUrl } from '@/common/libs/cloudflare/stream-video.utils';
 import { CloudflareImagesService } from '@/common/libs/cloudflare/cloudflare-images.service';
 
 @Injectable()
@@ -26,6 +27,32 @@ export class VideosService {
 		private readonly cloudflareStream: CloudflareStreamService,
 		private readonly cloudflareImages: CloudflareImagesService,
 	) {}
+
+	private streamUidForVideo(v: { videoPublicId: string | null; videoFile: string }): string | null {
+		const id = v.videoPublicId?.trim();
+		if (id) return id;
+		return extractCloudflareStreamUidFromVideoUrl(v.videoFile);
+	}
+
+	/** Fetch duration from Stream, persist when found (encoding may finish after first publish). */
+	private async syncDurationFromStreamIfMissing(
+		videoId: string,
+		videoPublicId: string | null,
+		videoFile: string,
+		opts: { attempts: number; delayMs: number } = { attempts: 4, delayMs: 2000 },
+	): Promise<number | null> {
+		const uid = this.streamUidForVideo({ videoPublicId, videoFile });
+		if (!uid) return null;
+		try {
+			const d = await this.cloudflareStream.getVideoDurationSecondsWithRetry(uid, opts);
+			if (d != null) {
+				await this.prisma.video.update({ where: { id: videoId }, data: { durationSeconds: d } });
+			}
+			return d;
+		} catch {
+			return null;
+		}
+	}
 
 	async create(
 		createVideoDto: CreateVideoDto,
@@ -65,6 +92,16 @@ export class VideosService {
 		try {
 			const uploadedThumbnail = await this.cloudflareImages.uploadImage(thumbnailFile);
 
+			let durationSeconds: number | null = null;
+			try {
+				durationSeconds = await this.cloudflareStream.getVideoDurationSecondsWithRetry(
+					videoPublicId,
+					{ attempts: 5, delayMs: 1500 },
+				);
+			} catch {
+				/* Stream may still be encoding — synced on read */
+			}
+
 			const newVideo = await this.prisma.video.create({
 				data: {
 					title,
@@ -79,6 +116,7 @@ export class VideosService {
 					thumbnailFile: uploadedThumbnail.url,
 					thumbnailPublicId: uploadedThumbnail.id,
 					channelId,
+					durationSeconds,
 				},
 			});
 
@@ -126,7 +164,7 @@ export class VideosService {
 	}
 
 	async findAll() {
-		return this.prisma.video.findMany({
+		const rows = await this.prisma.video.findMany({
 			where: { visibility: 'public', publishType: 'now' },
 			orderBy: { createdAt: 'desc' },
 			select: {
@@ -136,6 +174,8 @@ export class VideosService {
 				tags: true,
 				thumbnailFile: true,
 				videoFile: true,
+				videoPublicId: true,
+				durationSeconds: true,
 				createdAt: true,
 				channel: {
 					select: {
@@ -150,6 +190,17 @@ export class VideosService {
 				_count: { select: { views: true } },
 			},
 		});
+
+		for (const v of rows) {
+			if (v.durationSeconds != null) continue;
+			const d = await this.syncDurationFromStreamIfMissing(v.id, v.videoPublicId, v.videoFile, {
+				attempts: 3,
+				delayMs: 2000,
+			});
+			if (d != null) v.durationSeconds = d;
+		}
+
+		return rows.map(({ videoPublicId: _vp, ...rest }) => rest);
 	}
 
 	async findOne(id: string) {
@@ -161,6 +212,7 @@ export class VideosService {
 				description: true,
 				videoFile: true,
 				thumbnailFile: true,
+				durationSeconds: true,
 				createdAt: true,
 				tags: true,
 				videoPublicId: true,
@@ -205,6 +257,18 @@ export class VideosService {
 
 		if (!video) {
 			throw new NotFoundException('Video not found or is private');
+		}
+
+		if (video.durationSeconds == null) {
+			const d = await this.syncDurationFromStreamIfMissing(
+				video.id,
+				video.videoPublicId,
+				video.videoFile,
+				{ attempts: 4, delayMs: 2000 },
+			);
+			if (d != null) {
+				video.durationSeconds = d;
+			}
 		}
 
 		return video;
@@ -377,6 +441,7 @@ export class VideosService {
 				id: true,
 				title: true,
 				thumbnailFile: true,
+				durationSeconds: true,
 				createdAt: true,
 				_count: { select: { views: true } },
 				channel: {
@@ -481,6 +546,7 @@ export class VideosService {
 				audience: true,
 				publishType: true,
 				publishDate: true,
+				durationSeconds: true,
 				createdAt: true,
 				restrictionModeratorReason: true,
 				restrictionModeratorNote: true,

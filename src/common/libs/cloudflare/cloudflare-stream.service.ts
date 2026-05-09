@@ -1,6 +1,5 @@
-import { Inject, Injectable, InternalServerErrorException } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import axios from 'axios';
-import * as FormData from 'form-data';
 
 @Injectable()
 export class CloudflareStreamService {
@@ -50,5 +49,52 @@ export class CloudflareStreamService {
 		});
 
 		return response.data.result.status.state;
+	}
+
+	/** Duration in seconds when Cloudflare has finished processing; may be missing while pending. */
+	async getVideoDurationSeconds(videoId: string): Promise<number | null> {
+		const url = `https://api.cloudflare.com/client/v4/accounts/${this.config.accountId}/stream/${videoId}`;
+
+		const response = await axios.get(url, {
+			headers: {
+				Authorization: `Bearer ${this.config.apiToken}`,
+			},
+		});
+
+		const body = response.data as {
+			success?: boolean;
+			result?: { duration?: unknown; status?: { state?: string } };
+		};
+		if (body?.success === false || !body?.result) {
+			return null;
+		}
+
+		const raw = body.result.duration;
+		const num = typeof raw === 'string' ? parseFloat(raw) : Number(raw);
+		if (typeof num !== 'number' || !Number.isFinite(num) || num <= 0) {
+			return null;
+		}
+		return Math.round(num);
+	}
+
+	/**
+	 * Stream often reports duration only after encoding; retry a few times (create + backfill).
+	 */
+	async getVideoDurationSecondsWithRetry(
+		videoId: string,
+		opts: { attempts: number; delayMs: number } = { attempts: 5, delayMs: 2000 },
+	): Promise<number | null> {
+		for (let i = 0; i < opts.attempts; i++) {
+			if (i > 0) {
+				await new Promise((r) => setTimeout(r, opts.delayMs));
+			}
+			try {
+				const d = await this.getVideoDurationSeconds(videoId);
+				if (d != null) return d;
+			} catch {
+				/* network / 4xx — try again */
+			}
+		}
+		return null;
 	}
 }

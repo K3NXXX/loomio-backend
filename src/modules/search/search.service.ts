@@ -175,6 +175,7 @@ export class SearchService {
 						id: true,
 						title: true,
 						thumbnailFile: true,
+						durationSeconds: true,
 						createdAt: true,
 						_count: { select: { views: true } },
 						channel: {
@@ -192,6 +193,7 @@ export class SearchService {
 				id: true,
 				title: true,
 				thumbnailFile: true,
+				durationSeconds: true,
 				createdAt: true,
 				_count: { select: { views: true } },
 				channel: {

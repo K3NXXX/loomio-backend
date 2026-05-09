@@ -121,6 +121,7 @@ export class ChannelService {
 						description: true,
 						thumbnailFile: true,
 						videoFile: true,
+						durationSeconds: true,
 						visibility: true,
 						audience: true,
 						tags: true,
