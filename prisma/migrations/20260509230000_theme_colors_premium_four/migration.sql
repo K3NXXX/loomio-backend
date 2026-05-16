@@ -1,0 +1,5 @@
+-- AlterEnum — four additional Premium palettes
+ALTER TYPE "ThemeColors" ADD VALUE 'PREMIUM_CITRINE';
+ALTER TYPE "ThemeColors" ADD VALUE 'PREMIUM_LAGOON';
+ALTER TYPE "ThemeColors" ADD VALUE 'PREMIUM_LILAC';
+ALTER TYPE "ThemeColors" ADD VALUE 'PREMIUM_SPRING';

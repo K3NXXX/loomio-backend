@@ -138,17 +138,21 @@ export class VerificationService {
 
 		const meta = token.meta as SignupMeta;
 
-		const user = await this.prisma.user.create({
+		const created = await this.prisma.user.create({
 			data: {
 				name: meta.name,
 				username: meta.username,
 				email: meta.email,
 				password: meta.password,
+				uiPreference: { create: {} },
 			},
 		});
 
 		await this.prisma.token.delete({ where: { id: token.id } });
 
-		return user;
+		return this.prisma.user.findUniqueOrThrow({
+			where: { id: created.id },
+			include: { uiPreference: true },
+		});
 	}
 }

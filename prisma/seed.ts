@@ -20,7 +20,11 @@ async function main() {
 			password: hashedPassword,
 			role: 'ADMIN',
 			isActive: true,
-			theme: 'BLUE',
+			uiPreference: {
+				create: {
+					theme: 'BLUE',
+				},
+			},
 		},
 	});
 

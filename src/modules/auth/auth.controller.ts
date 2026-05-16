@@ -10,8 +10,6 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { Request, Response } from 'express';
-import { omit } from 'lodash';
-
 import {
 	Authorization,
 	FacebookAuthorization,
@@ -32,6 +30,7 @@ import { AuthService } from './auth.service';
 import { CookieService } from './cookie.service';
 import { LoginDto, SignupDto } from './dto/auth.dto';
 import { TokenService } from './token.service';
+import { buildUiCookieSyncPayloadFromFlat } from '../user/user-ui-preference.util';
 
 @Controller('auth')
 export class AuthController {
@@ -64,17 +63,19 @@ export class AuthController {
 		@Res({ passthrough: true }) res: Response,
 	) {
 		const { ip, userAgent } = extractRequestInfo(req);
-		const user = await this.verificationService.verifyCode(dto);
-		const { accessToken, refreshToken } = await this.tokenService.issueTokens(user, ip, userAgent);
-
-		const sanitizedUser = omit(user, 'password');
+		const userWithUi = await this.verificationService.verifyCode(dto);
+		const { accessToken, refreshToken, user } = await this.tokenService.issueTokens(
+			userWithUi,
+			ip,
+			userAgent,
+		);
 
 		this.cookieService.setCookies(res, accessToken, refreshToken);
-		this.cookieService.setThemeCookie(res, user.theme);
+		this.cookieService.syncUiCookies(res, buildUiCookieSyncPayloadFromFlat(user));
 
 		return {
 			success: true,
-			user: sanitizedUser,
+			user,
 			message: 'Account verified successfully',
 		};
 	}
@@ -97,11 +98,7 @@ export class AuthController {
 		const { user, accessToken, refreshToken } = await this.authService.login(ip, userAgent, dto);
 
 		this.cookieService.setCookies(res, accessToken, refreshToken);
-		this.cookieService.setThemeCookie(res, user.theme);
-		this.cookieService.setPreferenceCookie(res, 'locale', user.locale.toLowerCase());
-
-		console.log('USER:', user);
-		console.log('LOCALE:', user.locale);
+		this.cookieService.syncUiCookies(res, buildUiCookieSyncPayloadFromFlat(user));
 
 		return { success: true, user, message: 'Logged in successfully' };
 	}
@@ -117,6 +114,7 @@ export class AuthController {
 		const result = await this.authService.refresh(refreshToken, ip, userAgent);
 
 		this.cookieService.setCookies(res, result.accessToken, result.refreshToken);
+		this.cookieService.syncUiCookies(res, buildUiCookieSyncPayloadFromFlat(result.user));
 
 		return {
 			success: true,
@@ -132,6 +130,8 @@ export class AuthController {
 
 		this.cookieService.clearCookies(res);
 		this.cookieService.clearThemeCookie(res);
+		this.cookieService.clearAppearanceCookie(res);
+		this.cookieService.clearCustomThemeCookie(res);
 
 		return { message: 'Logged out successfully' };
 	}
@@ -167,13 +167,10 @@ export class AuthController {
 				return res.redirect(`${clientUrl}/login?error=admin_oauth_forbidden`);
 			}
 
-			const { accessToken, refreshToken } = await this.authService.oauthLogin(
-				oauthUser,
-				ip,
-				userAgent,
-			);
+			const issued = await this.authService.oauthLogin(oauthUser, ip, userAgent);
 
-			this.cookieService.setCookies(res, accessToken, refreshToken);
+			this.cookieService.setCookies(res, issued.accessToken, issued.refreshToken);
+			this.cookieService.syncUiCookies(res, buildUiCookieSyncPayloadFromFlat(issued.user));
 
 			return res.redirect(`${clientUrl}/callback`);
 		} catch (error) {
@@ -195,12 +192,9 @@ export class AuthController {
 		const { ip, userAgent } = extractRequestInfo(req);
 
 		try {
-			const { accessToken, refreshToken } = await this.authService.oauthLogin(
-				req.user as OAuthUser,
-				ip,
-				userAgent,
-			);
-			this.cookieService.setCookies(res, accessToken, refreshToken);
+			const issued = await this.authService.oauthLogin(req.user as OAuthUser, ip, userAgent);
+			this.cookieService.setCookies(res, issued.accessToken, issued.refreshToken);
+			this.cookieService.syncUiCookies(res, buildUiCookieSyncPayloadFromFlat(issued.user));
 			return res.redirect(`${clientUrl}/callback`);
 		} catch (error) {
 			this.logger.error(`Login failed: ${error instanceof Error ? error.message : error}`);
@@ -220,13 +214,10 @@ export class AuthController {
 		try {
 			const { ip, userAgent } = extractRequestInfo(req);
 
-			const { accessToken, refreshToken } = await this.authService.oauthLogin(
-				req.user as OAuthUser,
-				ip,
-				userAgent,
-			);
+			const issued = await this.authService.oauthLogin(req.user as OAuthUser, ip, userAgent);
 
-			this.cookieService.setCookies(res, accessToken, refreshToken);
+			this.cookieService.setCookies(res, issued.accessToken, issued.refreshToken);
+			this.cookieService.syncUiCookies(res, buildUiCookieSyncPayloadFromFlat(issued.user));
 
 			return res.redirect(`${clientUrl}/callback`);
 		} catch (error) {

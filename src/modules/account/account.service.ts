@@ -12,7 +12,9 @@ export class AccountService {
 				provider_providerId: { provider, providerId },
 			},
 			include: {
-				user: true,
+				user: {
+					include: { uiPreference: true },
+				},
 			},
 		});
 	}

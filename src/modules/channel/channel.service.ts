@@ -1,3 +1,5 @@
+import { flattenChannelBranding } from './channel-branding.util';
+import { AVATAR_FRAME_STYLE, AVATAR_FRAME_THICKNESS } from './channel-frame.constants';
 import { PrismaService } from '@/common/prisma/prisma.service';
 import {
 	BadRequestException,
@@ -12,12 +14,40 @@ import { CloudflareImagesService } from '@/common/libs/cloudflare/cloudflare-ima
 
 type Files = { avatar?: Express.Multer.File; banner?: Express.Multer.File };
 
+const BANNER_STATIC_MAX_BYTES = 6 * 1024 * 1024
+const BANNER_GIF_MAX_BYTES = 12 * 1024 * 1024
+
+function isGifFile(file: Express.Multer.File): boolean {
+	const mt = (file.mimetype || '').toLowerCase()
+	const name = (file.originalname || '').toLowerCase()
+	return mt === 'image/gif' || name.endsWith('.gif')
+}
+
 @Injectable()
 export class ChannelService {
 	constructor(
 		private readonly prisma: PrismaService,
 		private readonly cloudflareImages: CloudflareImagesService,
 	) {}
+
+	private frameOptionRequiresPremium(prev: string | null, next: string | null): boolean {
+		const p = prev ?? null;
+		if (p === next) return false;
+		if (next === null) return false;
+		return true;
+	}
+
+	private async assertPremiumForFrameEditor(userId: string): Promise<void> {
+		const subscriber = await this.prisma.user.findUnique({
+			where: { id: userId },
+			select: { isPremium: true },
+		});
+		if (!subscriber?.isPremium) {
+			throw new ForbiddenException(
+				'Custom avatar frame options require an active Premium subscription',
+			);
+		}
+	}
 
 	private async ensureUsernameFree(username: string, exceptId?: string) {
 		const existing = await this.prisma.channel.findFirst({
@@ -80,8 +110,8 @@ export class ChannelService {
 		}
 	}
 
-	findUserChannels(userId: string) {
-		return this.prisma.channel.findMany({
+	async findUserChannels(userId: string) {
+		const rows = await this.prisma.channel.findMany({
 			where: { userId },
 			orderBy: [{ isDefault: 'desc' }, { createdAt: 'desc' }],
 			select: {
@@ -94,14 +124,22 @@ export class ChannelService {
 				avatarUrl: true,
 				updatedAt: true,
 				_count: { select: { videos: true, followers: true } },
+				branding: {
+					select: {
+						avatarFrameColor: true,
+						avatarFrameThickness: true,
+						avatarFrameStyle: true,
+					},
+				},
 			},
 		});
+		return rows.map((r) => flattenChannelBranding(r));
 	}
 
-	async findChannel(username: string) {
+	async findChannel(username: string, scope: 'full' | 'studio' = 'full') {
 		const normalized = username.replace(/^@/, '').toLowerCase();
 
-		const channel = await this.prisma.channel.findFirst({
+		const row = await this.prisma.channel.findFirst({
 			where: { username: normalized },
 			select: {
 				id: true,
@@ -113,8 +151,16 @@ export class ChannelService {
 				createdAt: true,
 				userId: true,
 				_count: { select: { followers: true, videos: true } },
+				branding: {
+					select: {
+						avatarFrameColor: true,
+						avatarFrameThickness: true,
+						avatarFrameStyle: true,
+					},
+				},
 				videos: {
 					where: { publishType: 'now', visibility: 'public' },
+					...(scope === 'studio' ? { take: 0 } : {}),
 					select: {
 						id: true,
 						title: true,
@@ -135,8 +181,8 @@ export class ChannelService {
 			},
 		});
 
-		if (!channel) throw new NotFoundException('Channel not found');
-		return channel;
+		if (!row) throw new NotFoundException('Channel not found');
+		return flattenChannelBranding(row);
 	}
 
 	async update(userId: string, channelId: string, dto: UpdateChannelDto, files: Files) {
@@ -147,10 +193,38 @@ export class ChannelService {
 				userId: true,
 				avatarPublicId: true,
 				bannerPublicId: true,
+				branding: {
+					select: {
+						avatarFrameColor: true,
+						avatarFrameThickness: true,
+						avatarFrameStyle: true,
+					},
+				},
 			},
 		});
 		if (!ch) throw new NotFoundException('Channel not found');
 		if (ch.userId !== userId) throw new ForbiddenException('You are not owner');
+
+		if (files.banner) {
+			const gif = isGifFile(files.banner)
+			if (gif) {
+				const subscriber = await this.prisma.user.findUnique({
+					where: { id: userId },
+					select: { isPremium: true },
+				})
+				if (!subscriber) throw new NotFoundException('User not found')
+				if (!subscriber.isPremium) {
+					throw new ForbiddenException(
+						'Animated GIF banners require an active Premium subscription',
+					)
+				}
+				if (files.banner.size > BANNER_GIF_MAX_BYTES) {
+					throw new BadRequestException('GIF banner must be at most 12 MB')
+				}
+			} else if (files.banner.size > BANNER_STATIC_MAX_BYTES) {
+				throw new BadRequestException('Banner image must be at most 6 MB')
+			}
+		}
 
 		if (dto.username) {
 			const normalized = dto.username.trim().toLowerCase();
@@ -196,18 +270,98 @@ export class ChannelService {
 				}),
 			};
 
-			if (dto.removeAvatar) {
+			if (dto.removeAvatar && !uploadedAvatar) {
 				data.avatarUrl = null;
 				data.avatarPublicId = null;
 			}
-			if (dto.removeBanner) {
+			if (dto.removeBanner && !uploadedBanner) {
 				data.bannerUrl = null;
 				data.bannerPublicId = null;
 			}
 
-			const updated = await this.prisma.channel.update({
+			let nextColor = ch.branding?.avatarFrameColor ?? null;
+			let nextThickness = ch.branding?.avatarFrameThickness ?? null;
+			let nextStyle = ch.branding?.avatarFrameStyle ?? null;
+
+			if (dto.avatarFrameColor !== undefined) {
+				const raw = dto.avatarFrameColor.trim();
+				if (raw === '') {
+					nextColor = null;
+				} else if (!/^#[0-9A-Fa-f]{6}$/.test(raw)) {
+					throw new BadRequestException('Invalid avatar frame color');
+				} else {
+					const prev = ch.branding?.avatarFrameColor ?? null;
+					if (this.frameOptionRequiresPremium(prev, raw)) {
+						await this.assertPremiumForFrameEditor(userId);
+					}
+					nextColor = raw;
+				}
+			}
+
+			if (dto.avatarFrameThickness !== undefined) {
+				const raw = dto.avatarFrameThickness.trim();
+				const next = raw === '' ? null : raw;
+				if (
+					next !== null &&
+					!(AVATAR_FRAME_THICKNESS as readonly string[]).includes(next)
+				) {
+					throw new BadRequestException('Invalid avatar frame thickness');
+				}
+				const prev = ch.branding?.avatarFrameThickness ?? null;
+				if (this.frameOptionRequiresPremium(prev, next)) {
+					await this.assertPremiumForFrameEditor(userId);
+				}
+				nextThickness = next;
+			}
+
+			if (dto.avatarFrameStyle !== undefined) {
+				const raw = dto.avatarFrameStyle.trim();
+				const next = raw === '' ? null : raw;
+				if (next !== null && !(AVATAR_FRAME_STYLE as readonly string[]).includes(next)) {
+					throw new BadRequestException('Invalid avatar frame style');
+				}
+				const prev = ch.branding?.avatarFrameStyle ?? null;
+				if (this.frameOptionRequiresPremium(prev, next)) {
+					await this.assertPremiumForFrameEditor(userId);
+				}
+				nextStyle = next;
+			}
+
+			const frameTouched =
+				dto.avatarFrameColor !== undefined ||
+				dto.avatarFrameThickness !== undefined ||
+				dto.avatarFrameStyle !== undefined;
+
+			await this.prisma.$transaction(async (tx) => {
+				await tx.channel.update({
+					where: { id: channelId },
+					data,
+				});
+				if (frameTouched) {
+					const allNull = !nextColor && !nextThickness && !nextStyle;
+					if (allNull) {
+						await tx.channelBranding.deleteMany({ where: { channelId } });
+					} else {
+						await tx.channelBranding.upsert({
+							where: { channelId },
+							create: {
+								channelId,
+								avatarFrameColor: nextColor,
+								avatarFrameThickness: nextThickness,
+								avatarFrameStyle: nextStyle,
+							},
+							update: {
+								avatarFrameColor: nextColor,
+								avatarFrameThickness: nextThickness,
+								avatarFrameStyle: nextStyle,
+							},
+						});
+					}
+				}
+			});
+
+			const updatedRow = await this.prisma.channel.findUnique({
 				where: { id: channelId },
-				data,
 				select: {
 					id: true,
 					name: true,
@@ -217,8 +371,17 @@ export class ChannelService {
 					bannerUrl: true,
 					createdAt: true,
 					updatedAt: true,
+					branding: {
+						select: {
+							avatarFrameColor: true,
+							avatarFrameThickness: true,
+							avatarFrameStyle: true,
+						},
+					},
 				},
 			});
+
+			if (!updatedRow) throw new InternalServerErrorException('Could not update channel');
 
 			if (uploadedAvatar && ch.avatarPublicId) {
 				this.cloudflareImages.deleteImage(ch.avatarPublicId).catch(() => {});
@@ -233,7 +396,7 @@ export class ChannelService {
 				this.cloudflareImages.deleteImage(ch.bannerPublicId).catch(() => {});
 			}
 
-			return updated;
+			return flattenChannelBranding(updatedRow);
 		} catch (err: any) {
 			if (uploadedAvatar?.id) {
 				this.cloudflareImages.deleteImage(uploadedAvatar.id).catch(() => {});
@@ -269,6 +432,27 @@ export class ChannelService {
 		});
 
 		return { totalViews: count };
+	}
+
+	async stripPremiumBrandingAndBannersForUser(userId: string): Promise<void> {
+		await this.prisma.channelBranding.deleteMany({
+			where: { channel: { userId } },
+		});
+
+		const channels = await this.prisma.channel.findMany({
+			where: { userId, bannerUrl: { not: null } },
+			select: { id: true, bannerPublicId: true },
+		});
+
+		for (const ch of channels) {
+			if (ch.bannerPublicId) {
+				await this.cloudflareImages.deleteImage(ch.bannerPublicId).catch(() => {});
+			}
+			await this.prisma.channel.update({
+				where: { id: ch.id },
+				data: { bannerUrl: null, bannerPublicId: null },
+			});
+		}
 	}
 
 	async delete(userId: string, channelId: string) {

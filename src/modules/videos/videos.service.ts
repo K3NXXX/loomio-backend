@@ -555,9 +555,7 @@ export class VideosService {
 		});
 
 		const moderationMetaVideoIds = videos
-			.filter(
-				(v) => v.visibility === 'restricted' || v.visibility === 'pending_review',
-			)
+			.filter((v) => v.visibility === 'restricted' || v.visibility === 'pending_review')
 			.map((v) => v.id);
 
 		if (moderationMetaVideoIds.length === 0) {
@@ -567,10 +565,7 @@ export class VideosService {
 		const reports = await this.prisma.report.findMany({
 			where: {
 				videoId: { in: moderationMetaVideoIds },
-				OR: [
-					{ moderatorRestrictionReason: { not: null } },
-					{ moderatorNote: { not: null } },
-				],
+				OR: [{ moderatorRestrictionReason: { not: null } }, { moderatorNote: { not: null } }],
 			},
 			orderBy: { createdAt: 'desc' },
 			select: {
@@ -598,8 +593,7 @@ export class VideosService {
 
 		return videos.map((v) => {
 			const fb = fallbackByVideoId.get(v.id);
-			const needsMeta =
-				v.visibility === 'restricted' || v.visibility === 'pending_review';
+			const needsMeta = v.visibility === 'restricted' || v.visibility === 'pending_review';
 			if (!fb || !needsMeta) {
 				return v;
 			}

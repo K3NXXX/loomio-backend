@@ -1,12 +1,19 @@
 import {
 	BadRequestException,
 	ConflictException,
+	ForbiddenException,
 	Injectable,
 	InternalServerErrorException,
 	NotFoundException,
 	UnauthorizedException,
 } from '@nestjs/common';
-import { Locale, Prisma, User } from '@prisma/client';
+import {
+	Locale,
+	Prisma,
+	ThemeColors,
+	User,
+	UserUiPreference,
+} from '@prisma/client';
 import { argon2id, hash, verify } from 'argon2';
 
 import { PrismaService } from '@/common/prisma/prisma.service';
@@ -14,16 +21,58 @@ import { PrismaService } from '@/common/prisma/prisma.service';
 import { SignupDto } from '../auth/dto/auth.dto';
 import { OAuthDto } from '../auth/dto/oauth.dto';
 import { SearchUsersDto } from './dto/search-users.dto';
+import { UpdateAppearanceDto } from './dto/appearance.dto';
+import { UpdateCustomThemeDto } from './dto/custom-theme.dto';
 import { UpdateThemeDto } from './dto/theme.dto';
 import { UpdateAccountDto } from './dto/update-account.dto';
 import { CloudflareImagesService } from '@/common/libs/cloudflare/cloudflare-images.service';
+import { ChannelService } from '@/modules/channel/channel.service';
+
+import { resolveEffectiveTheme, requiresPremiumSubscription } from './theme-policy.util';
+import { uiPrefsFromRecord } from './user-ui-preference.util';
 
 @Injectable()
 export class UserService {
 	constructor(
 		private readonly prisma: PrismaService,
 		private readonly cloudflareImages: CloudflareImagesService,
+		private readonly channelService: ChannelService,
 	) {}
+
+	private async repairStoredEntitlementsForNonPremiumUser(userId: string): Promise<void> {
+		const prefRow = await this.prisma.userUiPreference.findUnique({
+			where: { userId },
+			select: { theme: true, customTheme: true, appearance: true, locale: true },
+		});
+		const prefs = uiPrefsFromRecord(prefRow ?? null);
+
+		const themeNeedsFix = requiresPremiumSubscription(prefs.theme);
+		const customNeedsFix = prefs.customTheme != null;
+
+		if (themeNeedsFix || customNeedsFix) {
+			await this.prisma.userUiPreference.upsert({
+				where: { userId },
+				create: { userId, theme: ThemeColors.BLUE },
+				update: { theme: ThemeColors.BLUE, customTheme: Prisma.DbNull },
+			});
+		}
+
+		const [brandingCount, bannerCount] = await Promise.all([
+			this.prisma.channelBranding.count({
+				where: { channel: { userId } },
+			}),
+			this.prisma.channel.count({
+				where: {
+					userId,
+					bannerUrl: { not: null },
+				},
+			}),
+		]);
+
+		if (brandingCount > 0 || bannerCount > 0) {
+			await this.channelService.stripPremiumBrandingAndBannersForUser(userId);
+		}
+	}
 
 	async create(dto: SignupDto | (OAuthDto & { password?: string | null })) {
 		const data: Prisma.UserCreateInput = {
@@ -36,10 +85,17 @@ export class UserService {
 
 		if (dto.password) data.password = await hash(dto.password, { type: argon2id });
 
-		return this.prisma.user.create({ data });
+		return this.prisma.user.create({
+			data: {
+				...data,
+				uiPreference: { create: {} },
+			},
+		});
 	}
 
-	async createOAuth(dto: OAuthDto): Promise<User> {
+	async createOAuth(
+		dto: OAuthDto,
+	): Promise<User & { uiPreference: UserUiPreference | null }> {
 		const username = await this.generateUsername(dto.username);
 
 		return this.prisma.$transaction(async (tx) => {
@@ -51,7 +107,7 @@ export class UserService {
 					providerEmail: dto.providerEmail?.trim().toLowerCase() ?? null,
 					avatarUrl: dto.avatarUrl ?? null,
 					password: null,
-					locale: 'UK',
+					uiPreference: { create: {} },
 				},
 			});
 
@@ -63,7 +119,10 @@ export class UserService {
 				},
 			});
 
-			return user;
+			return tx.user.findUniqueOrThrow({
+				where: { id: user.id },
+				include: { uiPreference: true },
+			});
 		});
 	}
 
@@ -74,8 +133,26 @@ export class UserService {
 		});
 	}
 
-	async findByEmail(email: string) {
-		return this.prisma.user.findUnique({ where: { email } });
+	async findByIdWithUiPreference(id: string) {
+		return this.prisma.user.findUnique({
+			where: { id },
+			include: { uiPreference: true },
+		});
+	}
+
+	async findByEmail(
+		email: string,
+		opts: { forAuthResponse: true },
+	): Promise<(User & { uiPreference: UserUiPreference | null }) | null>;
+	async findByEmail(email: string, opts?: { forAuthResponse?: false }): Promise<User | null>;
+	async findByEmail(
+		email: string,
+		opts?: { forAuthResponse?: boolean },
+	): Promise<(User & { uiPreference: UserUiPreference | null }) | User | null> {
+		return this.prisma.user.findUnique({
+			where: { email: email.trim().toLowerCase() },
+			...(opts?.forAuthResponse ? { include: { uiPreference: true } } : {}),
+		});
 	}
 
 	async findByUsername(username: string) {
@@ -92,6 +169,7 @@ export class UserService {
 					{ email: { equals: identifier.toLowerCase(), mode: 'insensitive' } },
 				],
 			},
+			include: { uiPreference: true },
 		});
 	}
 
@@ -105,10 +183,17 @@ export class UserService {
 				email: true,
 				avatarUrl: true,
 				isActive: true,
-				theme: true,
 				role: true,
 				isPremium: true,
 				password: true,
+				uiPreference: {
+					select: {
+						theme: true,
+						customTheme: true,
+						appearance: true,
+						locale: true,
+					},
+				},
 				accounts: {
 					select: {
 						provider: true,
@@ -119,9 +204,35 @@ export class UserService {
 
 		if (!user) return null;
 
+		let uiPreference = user.uiPreference;
+
+		if (!user.isPremium) {
+			await this.repairStoredEntitlementsForNonPremiumUser(user.id);
+			uiPreference =
+				(await this.prisma.userUiPreference.findUnique({
+					where: { userId: user.id },
+					select: {
+						theme: true,
+						customTheme: true,
+						appearance: true,
+						locale: true,
+					},
+				})) ?? null;
+		}
+
 		const hasPassword = !!user.password;
 		const authProviders = user.accounts.map((acc) => acc.provider);
 		const hasGoogle = authProviders.includes('google');
+
+		const prefs = uiPrefsFromRecord(uiPreference ?? null);
+		const effectiveTheme = resolveEffectiveTheme(prefs.theme, user.isPremium);
+		const customThemePayload =
+			user.isPremium &&
+			prefs.customTheme &&
+			typeof prefs.customTheme === 'object' &&
+			!Array.isArray(prefs.customTheme)
+				? (prefs.customTheme as { background: string; primary: string })
+				: null;
 
 		return {
 			id: user.id,
@@ -130,15 +241,32 @@ export class UserService {
 			email: user.email,
 			avatarUrl: user.avatarUrl,
 			isActive: user.isActive,
-			theme: user.theme,
+			theme: effectiveTheme,
+			customTheme: customThemePayload,
 			role: user.role,
 			isPremium: user.isPremium,
+			appearance: prefs.appearance,
+			locale: prefs.locale,
 
 			hasPassword,
 			authProviders,
 			canChangePassword: hasPassword,
 			canChangeEmail: !hasGoogle,
 		};
+	}
+
+	async revokePremium(userId: string): Promise<void> {
+		const user = await this.prisma.user.findUnique({
+			where: { id: userId },
+			select: { id: true },
+		});
+		if (!user) return;
+
+		await this.prisma.user.update({
+			where: { id: userId },
+			data: { isPremium: false },
+		});
+		await this.repairStoredEntitlementsForNonPremiumUser(userId);
 	}
 
 	async searchUsers(userId: string, dto: SearchUsersDto) {
@@ -167,21 +295,83 @@ export class UserService {
 		});
 	}
 
-	async updateTheme(userId: string, dto: UpdateThemeDto) {
-		return this.prisma.user.update({
-			where: { id: userId },
-			data: { theme: dto.theme },
+	async updateAppearance(userId: string, dto: UpdateAppearanceDto) {
+		return this.prisma.userUiPreference.upsert({
+			where: { userId },
+			create: {
+				userId,
+				appearance: dto.appearance,
+			},
+			update: { appearance: dto.appearance },
 			select: {
-				id: true,
+				appearance: true,
+			},
+		});
+	}
+
+	async updateTheme(userId: string, dto: UpdateThemeDto) {
+		if (dto.theme === ThemeColors.CUSTOM) {
+			throw new BadRequestException('Use PATCH /user/custom-theme to set a custom palette');
+		}
+
+		const subscriber = await this.prisma.user.findUnique({
+			where: { id: userId },
+			select: { isPremium: true },
+		});
+		if (!subscriber) throw new NotFoundException('User not found');
+		if (requiresPremiumSubscription(dto.theme) && !subscriber.isPremium) {
+			throw new ForbiddenException('Premium palette requires an active subscription');
+		}
+
+		return this.prisma.userUiPreference.upsert({
+			where: { userId },
+			create: {
+				userId,
+				theme: dto.theme,
+			},
+			update: { theme: dto.theme },
+			select: {
 				theme: true,
 			},
 		});
 	}
 
-	async updateLocale(userId: string, locale: Locale) {
-		return this.prisma.user.update({
+	async updateCustomTheme(userId: string, dto: UpdateCustomThemeDto) {
+		const subscriber = await this.prisma.user.findUnique({
 			where: { id: userId },
-			data: { locale },
+			select: { isPremium: true },
+		});
+		if (!subscriber) throw new NotFoundException('User not found');
+		if (!subscriber.isPremium) {
+			throw new ForbiddenException('Custom theme requires an active Premium subscription');
+		}
+
+		const customTheme = { background: dto.background, primary: dto.primary };
+
+		return this.prisma.userUiPreference.upsert({
+			where: { userId },
+			create: {
+				userId,
+				theme: ThemeColors.CUSTOM,
+				customTheme,
+			},
+			update: {
+				theme: ThemeColors.CUSTOM,
+				customTheme,
+			},
+			select: {
+				theme: true,
+				customTheme: true,
+			},
+		});
+	}
+
+	async updateLocale(userId: string, locale: Locale) {
+		return this.prisma.userUiPreference.upsert({
+			where: { userId },
+			create: { userId, locale },
+			update: { locale },
+			select: { locale: true },
 		});
 	}
 

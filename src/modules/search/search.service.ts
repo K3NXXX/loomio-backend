@@ -1,3 +1,4 @@
+import { flattenChannelBranding } from '@/modules/channel/channel-branding.util';
 import { PrismaService } from '@/common/prisma/prisma.service';
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
@@ -110,9 +111,19 @@ export class SearchService {
 					bannerUrl: true,
 					description: true,
 					_count: { select: { followers: true } },
+					branding: {
+						select: {
+							avatarFrameColor: true,
+							avatarFrameThickness: true,
+							avatarFrameStyle: true,
+						},
+					},
 				},
 			});
-			return { videos: [], channels };
+			return {
+				videos: [],
+				channels: channels.map((c) => flattenChannelBranding(c)),
+			};
 		}
 
 		const hashtags = query.match(/#[\w\d]+/g)?.map((t) => t.replace('#', '').toLowerCase()) ?? [];
@@ -210,12 +221,15 @@ export class SearchService {
 			username: string;
 			avatarUrl: string | null;
 			bannerUrl: string | null;
+			avatarFrameColor: string | null;
+			avatarFrameThickness: string | null;
+			avatarFrameStyle: string | null;
 			description: string | null;
 			_count: { followers: number };
 		}[] = [];
 
 		if (!hashtags.length && cleanedQuery) {
-			channels = await this.prisma.channel.findMany({
+			const channelsRaw = await this.prisma.channel.findMany({
 				where: {
 					OR: [
 						{ name: { contains: mainKeyword, mode: Prisma.QueryMode.insensitive } },
@@ -236,8 +250,16 @@ export class SearchService {
 					bannerUrl: true,
 					description: true,
 					_count: { select: { followers: true } },
+					branding: {
+						select: {
+							avatarFrameColor: true,
+							avatarFrameThickness: true,
+							avatarFrameStyle: true,
+						},
+					},
 				},
 			});
+			channels = channelsRaw.map((c) => flattenChannelBranding(c));
 		}
 
 		return {

@@ -1,5 +1,6 @@
+import { AVATAR_FRAME_STYLE, AVATAR_FRAME_THICKNESS } from '../channel-frame.constants';
 import { Transform } from 'class-transformer';
-import { IsBoolean, IsOptional, IsString, Length, Matches, MaxLength } from 'class-validator';
+import { IsBoolean, IsIn, IsOptional, IsString, Length, Matches, MaxLength } from 'class-validator';
 
 export class UpdateChannelDto {
 	@IsOptional()
@@ -35,4 +36,25 @@ export class UpdateChannelDto {
 	@IsBoolean()
 	@Transform(({ value }) => value === 'true' || value === true)
 	removeBanner?: boolean
+
+	@IsOptional()
+	@IsString()
+	@Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+	avatarFrameColor?: string
+
+	@IsOptional()
+	@IsString()
+	@Transform(({ value }) =>
+		typeof value === 'string' ? value.trim().toLowerCase() : value,
+	)
+	@IsIn([...AVATAR_FRAME_THICKNESS, ''], { message: 'Invalid avatar frame thickness' })
+	avatarFrameThickness?: string
+
+	@IsOptional()
+	@IsString()
+	@Transform(({ value }) =>
+		typeof value === 'string' ? value.trim().toLowerCase() : value,
+	)
+	@IsIn([...AVATAR_FRAME_STYLE, ''], { message: 'Invalid avatar frame style' })
+	avatarFrameStyle?: string
 }

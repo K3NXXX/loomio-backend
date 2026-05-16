@@ -1,10 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
-import { User } from '@prisma/client';
-import { omit } from 'lodash';
+import { User, UserUiPreference } from '@prisma/client';
 
 import { TokenPair } from '@/common/types/token-pair.type';
+import { toPublicUserWithUiPrefs } from '../user/user-ui-preference.util';
 
 import { SessionService } from './sessions/sessions.service';
 
@@ -16,10 +16,17 @@ export class TokenService {
 		private readonly sessionService: SessionService,
 	) {}
 
-	async issueTokens(user: User, ip: string, userAgent?: string): Promise<TokenPair> {
-		const accessToken = await this.createAccessToken(user.id, user.role, user.isPremium)
+	async issueTokens(
+		user: User & { uiPreference?: UserUiPreference | null },
+		ip: string,
+		userAgent?: string,
+	): Promise<TokenPair> {
+		const accessToken = await this.createAccessToken(user.id, user.role, user.isPremium);
 		const refreshToken = await this.createRefreshToken(user.id, ip, userAgent);
-		const sanitizedUser = omit(user, 'password');
+
+		const { password: _omit, ...withPrefs } = user;
+		void _omit;
+		const sanitizedUser = toPublicUserWithUiPrefs(withPrefs);
 
 		return {
 			user: sanitizedUser,

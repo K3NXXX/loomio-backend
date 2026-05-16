@@ -1,0 +1,7 @@
+-- AlterEnum — six additional Premium-only palettes
+ALTER TYPE "ThemeColors" ADD VALUE 'PREMIUM_DENIM';
+ALTER TYPE "ThemeColors" ADD VALUE 'PREMIUM_BLUSH';
+ALTER TYPE "ThemeColors" ADD VALUE 'PREMIUM_CLAY';
+ALTER TYPE "ThemeColors" ADD VALUE 'PREMIUM_GRAPHITE';
+ALTER TYPE "ThemeColors" ADD VALUE 'PREMIUM_HONEY';
+ALTER TYPE "ThemeColors" ADD VALUE 'PREMIUM_IRIS';

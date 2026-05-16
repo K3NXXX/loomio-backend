@@ -20,6 +20,8 @@ import { CurrentUser } from '@/common/decorators/user.decorator';
 import { CookieService } from '../auth/cookie.service';
 import { SessionService } from '../auth/sessions/sessions.service';
 import { SearchUsersDto } from './dto/search-users.dto';
+import { UpdateAppearanceDto } from './dto/appearance.dto';
+import { UpdateCustomThemeDto } from './dto/custom-theme.dto';
 import { UpdateThemeDto } from './dto/theme.dto';
 import { UpdateAccountDto } from './dto/update-account.dto';
 import { UserService } from './user.service';
@@ -56,6 +58,19 @@ export class UserController {
 		return { message: 'Session deleted' };
 	}
 
+	@Patch('appearance')
+	async updateAppearance(
+		@CurrentUser('id') userId: string,
+		@Body() dto: UpdateAppearanceDto,
+		@Res() res: Response,
+	) {
+		const user = await this.userService.updateAppearance(userId, dto);
+
+		this.cookieService.setAppearanceCookie(res, user.appearance);
+
+		res.json({ message: 'Appearance updated', appearance: user.appearance });
+	}
+
 	@Patch('theme')
 	async updateTheme(
 		@CurrentUser('id') userId: string,
@@ -65,8 +80,30 @@ export class UserController {
 		const user = await this.userService.updateTheme(userId, dto);
 
 		this.cookieService.setThemeCookie(res, user.theme);
+		this.cookieService.clearCustomThemeCookie(res);
 
 		res.json({ message: 'Theme updated', theme: user.theme });
+	}
+
+	@Patch('custom-theme')
+	async updateCustomTheme(
+		@CurrentUser('id') userId: string,
+		@Body() dto: UpdateCustomThemeDto,
+		@Res() res: Response,
+	) {
+		const user = await this.userService.updateCustomTheme(userId, dto);
+
+		this.cookieService.setThemeCookie(res, user.theme);
+		this.cookieService.setCustomThemeCookie(
+			res,
+			user.customTheme as { background: string; primary: string },
+		);
+
+		res.json({
+			message: 'Custom theme updated',
+			theme: user.theme,
+			customTheme: user.customTheme,
+		});
 	}
 
 	@Patch('locale')

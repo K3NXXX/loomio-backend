@@ -95,7 +95,7 @@ export class AuthService {
 				return this.tokenService.issueTokens(existingAccount.user, ip, userAgent);
 			}
 
-			let user = await this.userService.findByEmail(email);
+			let user = await this.userService.findByEmail(email, { forAuthResponse: true });
 
 			if (user && user.role === 'ADMIN') {
 				throw new ForbiddenException('Admins cannot use OAuth login.');
@@ -140,7 +140,7 @@ export class AuthService {
 
 		await this.sessionService.delete(session.userId, session.id);
 
-		const user = await this.userService.findById(session.userId);
+		const user = await this.userService.findByIdWithUiPreference(session.userId);
 		if (!user || !user.isActive) throw new UnauthorizedException('User is not available');
 
 		const {

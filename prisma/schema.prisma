@@ -8,25 +8,24 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model User {
-  id       String  @id @default(uuid())
-  name     String?  @db.VarChar(255)
-  username String  @unique @db.VarChar(39)
-  email    String  @unique @db.VarChar(255)
-  providerEmail String? @map("provider_email") @db.VarChar(255)
-  password String? @db.VarChar(255)
-  isPremium Boolean @default(false)
-  avatarUrl      String? @map("avatar_url")
-  avatarPublicId String? @map("avatar_public_id")
+	model User {
+	  id       String  @id @default(uuid())
+	  name     String?  @db.VarChar(255)
+	  username String  @unique @db.VarChar(39)
+	  email    String  @unique @db.VarChar(255)
+	  providerEmail String? @map("provider_email") @db.VarChar(255)
+	  password String? @db.VarChar(255)
+	  isPremium Boolean @default(false)
+	  avatarUrl      String? @map("avatar_url")
+	  avatarPublicId String? @map("avatar_public_id")
 
-  role     UserRole @default(USER)
-  bio      String?  @db.Text
-  isActive Boolean  @default(true) @map("is_active")
+	  role     UserRole @default(USER)
+	  bio      String?  @db.Text
+	  isActive Boolean  @default(true) @map("is_active")
 
-  theme ThemeColors @default(BLUE)
-  locale Locale @default(UK)
+	  uiPreference UserUiPreference?
 
-  accounts Account[]
+	  accounts Account[]
   sessions Session[]
   channels Channel[]
   reports  Report[]
@@ -49,10 +48,26 @@ model User {
   @@index([username])
   @@index([isActive])
   @@index([role])
-  @@map("users")
-}
+	  @@map("users")
+	}
 
-model Channel {
+	model UserUiPreference {
+	  id     String @id @default(uuid())
+	  userId String @unique @map("user_id")
+	  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+	  theme       ThemeColors      @default(BLUE)
+	  customTheme Json?            @map("custom_theme")
+	  appearance  AppearanceMode   @default(DARK)
+	  locale      Locale           @default(UK)
+
+	  createdAt DateTime @default(now()) @map("created_at")
+	  updatedAt DateTime @updatedAt @map("updated_at")
+
+	  @@map("user_ui_preferences")
+	}
+
+	model Channel {
   id          String  @id @default(uuid())
   name        String  @db.VarChar(50)
   username    String  @unique @db.VarChar(20)
@@ -63,6 +78,8 @@ model Channel {
 
   bannerUrl      String? @map("banner_url")
   bannerPublicId String? @map("banner_public_id")
+
+  branding ChannelBranding?
 
   isDefault Boolean @default(false) @map("is_default")
 
@@ -79,6 +96,17 @@ model Channel {
 
   @@index([userId])
   @@map("channels")
+}
+
+model ChannelBranding {
+  channelId            String   @id @map("channel_id")
+  channel              Channel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  avatarFrameColor    String?  @map("avatar_frame_color") @db.VarChar(7)
+  avatarFrameThickness String? @map("avatar_frame_thickness") @db.VarChar(10)
+  avatarFrameStyle    String?  @map("avatar_frame_style") @db.VarChar(20)
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  @@map("channel_brandings")
 }
 
 model ChannelFollow {
@@ -381,6 +409,11 @@ enum TokenType {
   EMAIL_CHANGE
 }
 
+enum AppearanceMode {
+  LIGHT
+  DARK
+}
+
 enum ThemeColors {
   RED
   ORANGE
@@ -389,6 +422,19 @@ enum ThemeColors {
   YELLOW
   VIOLET
   WHITE
+  PREMIUM
+  PREMIUM_ORCHID
+  PREMIUM_DENIM
+  PREMIUM_BLUSH
+  PREMIUM_CLAY
+  PREMIUM_GRAPHITE
+  PREMIUM_HONEY
+  PREMIUM_IRIS
+  PREMIUM_CITRINE
+  PREMIUM_LAGOON
+  PREMIUM_LILAC
+  PREMIUM_SPRING
+  CUSTOM
 }
 
 enum ReactionType {

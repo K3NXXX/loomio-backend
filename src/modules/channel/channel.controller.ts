@@ -9,6 +9,7 @@ import {
 	Param,
 	Patch,
 	Post,
+	Query,
 	Req,
 	UploadedFile,
 	UploadedFiles,
@@ -40,18 +41,30 @@ export class ChannelController {
 		return this.channelService.findUserChannels(userId);
 	}
 
+	@Get(':username/views')
+	async getChannelTotalViews(@Param('username') username: string) {
+		return this.channelService.getChannelTotalViews(username);
+	}
+
 	@Get(':username')
-	getByUsername(@Param('username') username: string) {
-		return this.channelService.findChannel(username);
+	getByUsername(
+		@Param('username') username: string,
+		@Query('scope') scope?: string,
+	) {
+		const mode = scope === 'studio' ? 'studio' : 'full';
+		return this.channelService.findChannel(username, mode);
 	}
 
 	@Authorization()
 	@Patch(':id')
 	@UseInterceptors(
-		FileFieldsInterceptor([
-			{ name: 'avatar', maxCount: 1 },
-			{ name: 'banner', maxCount: 1 },
-		]),
+		FileFieldsInterceptor(
+			[
+				{ name: 'avatar', maxCount: 1 },
+				{ name: 'banner', maxCount: 1 },
+			],
+			{ limits: { fileSize: 15 * 1024 * 1024 } },
+		),
 	)
 	async update(
 		@Param('id') id: string,
@@ -66,11 +79,6 @@ export class ChannelController {
 		const avatar = files?.avatar?.[0];
 		const banner = files?.banner?.[0];
 		return this.channelService.update(userId, id, dto, { avatar, banner });
-	}
-
-	@Get(':username/views')
-	async getChannelTotalViews(@Param('username') username: string) {
-		return this.channelService.getChannelTotalViews(username);
 	}
 
 	@Authorization()

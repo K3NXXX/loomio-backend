@@ -1,6 +1,7 @@
 import { User } from '@prisma/client';
 import { Request } from 'express';
 
-export interface RequestWithOptionalUser extends Request {
+/** Passport types `user` as `User | undefined` only — `null` must not extend that directly. */
+export type RequestWithOptionalUser = Omit<Request, 'user'> & {
 	user?: User | null;
-}
+};

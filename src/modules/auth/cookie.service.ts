@@ -49,6 +49,43 @@ export class CookieService {
 		res.cookie('refreshToken', '', expired);
 	}
 
+	static readonly CUSTOM_THEME_COOKIE = 'loomio_custom_theme';
+
+	syncUiCookies(
+		res: Response,
+		prefs: {
+			theme: string;
+			locale: string;
+			appearance: string;
+			customTheme?: { background: string; primary: string } | null;
+		},
+	): void {
+		this.setThemeCookie(res, prefs.theme);
+		this.setAppearanceCookie(res, prefs.appearance);
+		this.setPreferenceCookie(res, 'locale', prefs.locale.toLowerCase());
+		if (prefs.customTheme) {
+			this.setCustomThemeCookie(res, prefs.customTheme);
+		} else {
+			this.clearCustomThemeCookie(res);
+		}
+	}
+
+	setAppearanceCookie(res: Response, appearance: string): void {
+		const normalized = String(appearance).toUpperCase() === 'LIGHT' ? 'light' : 'dark';
+
+		res.cookie('appearance', normalized, {
+			...this.baseOptions(false),
+			maxAge: 1000 * 60 * 60 * 24 * 30,
+		});
+	}
+
+	clearAppearanceCookie(res: Response): void {
+		res.cookie('appearance', '', {
+			...this.baseOptions(false),
+			expires: new Date(0),
+		});
+	}
+
 	setThemeCookie(res: Response, theme: string) {
 		res.cookie('theme', theme, {
 			...this.baseOptions(false),
@@ -58,6 +95,20 @@ export class CookieService {
 
 	clearThemeCookie(res: Response) {
 		res.cookie('theme', '', {
+			...this.baseOptions(false),
+			expires: new Date(0),
+		});
+	}
+
+	setCustomThemeCookie(res: Response, payload: { background: string; primary: string }) {
+		res.cookie(CookieService.CUSTOM_THEME_COOKIE, JSON.stringify(payload), {
+			...this.baseOptions(false),
+			maxAge: 1000 * 60 * 60 * 24 * 30,
+		});
+	}
+
+	clearCustomThemeCookie(res: Response) {
+		res.cookie(CookieService.CUSTOM_THEME_COOKIE, '', {
 			...this.baseOptions(false),
 			expires: new Date(0),
 		});
