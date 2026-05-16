@@ -27,6 +27,28 @@ export class CloudflareStreamService {
 		};
 	}
 
+	async copyFromUrl(sourceUrl: string, meta?: { name?: string; tags?: string[] }) {
+		const url = `https://api.cloudflare.com/client/v4/accounts/${this.config.accountId}/stream/copy`;
+
+		const response = await axios.post(
+			url,
+			{ url: sourceUrl, meta: meta ?? {} },
+			{
+				headers: {
+					Authorization: `Bearer ${this.config.apiToken}`,
+					'Content-Type': 'application/json',
+				},
+			},
+		);
+
+		if (!response.data?.success) {
+			const msg = response.data?.errors?.map((e: { message: string }) => e.message).join('; ');
+			throw new Error(`Stream copy failed: ${msg ?? JSON.stringify(response.data)}`);
+		}
+
+		return response.data.result.uid as string;
+	}
+
 	async deleteVideo(videoId: string) {
 		const url = `https://api.cloudflare.com/client/v4/accounts/${this.config.accountId}/stream/${videoId}`;
 

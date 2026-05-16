@@ -1,13 +1,20 @@
-import { Controller, Get, Param } from '@nestjs/common';
+import { Controller, Get, Param, Query, UseGuards } from '@nestjs/common';
 import { VideosService } from './videos.service';
+import { JwtOptionalGuard } from '@/common/guards/jwt-optional.guard';
+import { OptionalCurrentUser } from '@/common/decorators/optional-user.decorator';
+import { PublicVideosQueryDto } from './dto/public-videos-query.dto';
 
 @Controller('videos/public')
 export class PublicVideosController {
 	constructor(private readonly videosService: VideosService) {}
 
 	@Get()
-	findAll() {
-		return this.videosService.findAll();
+	@UseGuards(JwtOptionalGuard)
+	findAll(
+		@OptionalCurrentUser('id') viewerUserId: string | undefined,
+		@Query() query: PublicVideosQueryDto,
+	) {
+		return this.videosService.findAll(viewerUserId ?? null, query);
 	}
 
 	@Get(':id')

@@ -12,10 +12,21 @@ import { UploadApiResponse } from 'cloudinary';
 import { NotificationsGateway } from '../notification/notification.gateway';
 import { NotificationService } from '../notification/notification.service';
 import { CreateVideoDto } from './dto/create-video.dto';
+import { PublicVideosQueryDto } from './dto/public-videos-query.dto';
 import { UpdateVideoDto } from './dto/update-video.dto';
 import { CloudflareStreamService } from '@/common/libs/cloudflare/cloudflare-stream.service';
 import { extractCloudflareStreamUidFromVideoUrl } from '@/common/libs/cloudflare/stream-video.utils';
 import { CloudflareImagesService } from '@/common/libs/cloudflare/cloudflare-images.service';
+import {
+	HOME_FEED_MAX_CANDIDATES,
+	HOME_TASTE_LOOKBACK_MS,
+	HOME_TASTE_MIN_VIEWS,
+	HOME_TASTE_TOP_CHANNELS,
+	HOME_TASTE_TOP_TAGS,
+	type HomeTasteProfile,
+	parseVideoTagTokens,
+	rankHomeFeedVideos,
+} from './home-feed-rank.util';
 
 @Injectable()
 export class VideosService {
@@ -163,10 +174,53 @@ export class VideosService {
 		return this.cloudflareStream.getVideoStatus(videoId);
 	}
 
-	async findAll() {
+	private async buildHomeTasteProfile(userId: string): Promise<HomeTasteProfile | null> {
+		const since = new Date(Date.now() - HOME_TASTE_LOOKBACK_MS);
+		const views = await this.prisma.videoView.findMany({
+			where: { userId, createdAt: { gte: since } },
+			select: {
+				video: {
+					select: { channelId: true, tags: true },
+				},
+			},
+			orderBy: { createdAt: 'desc' },
+			take: 600,
+		});
+		if (views.length < HOME_TASTE_MIN_VIEWS) return null;
+
+		const channelCounts = new Map<string, number>();
+		const tagCounts = new Map<string, number>();
+		for (const v of views) {
+			const cid = v.video.channelId;
+			channelCounts.set(cid, (channelCounts.get(cid) ?? 0) + 1);
+			for (const t of parseVideoTagTokens(v.video.tags)) {
+				tagCounts.set(t, (tagCounts.get(t) ?? 0) + 1);
+			}
+		}
+		const topChannels = [...channelCounts.entries()]
+			.sort((a, b) => b[1] - a[1])
+			.slice(0, HOME_TASTE_TOP_CHANNELS)
+			.map(([id]) => id);
+		const topTags = [...tagCounts.entries()]
+			.sort((a, b) => b[1] - a[1])
+			.slice(0, HOME_TASTE_TOP_TAGS)
+			.map(([t]) => t);
+		return { channelIds: new Set(topChannels), tags: new Set(topTags) };
+	}
+
+	async findAll(viewerUserId?: string | null, query?: PublicVideosQueryDto) {
+		const page = Math.max(1, query?.page ?? 1);
+		const limit = Math.min(60, Math.max(1, query?.limit ?? 24));
+
+		const taste =
+			viewerUserId != null && viewerUserId !== ''
+				? await this.buildHomeTasteProfile(viewerUserId)
+				: null;
+
 		const rows = await this.prisma.video.findMany({
 			where: { visibility: 'public', publishType: 'now' },
 			orderBy: { createdAt: 'desc' },
+			take: HOME_FEED_MAX_CANDIDATES,
 			select: {
 				id: true,
 				title: true,
@@ -176,6 +230,7 @@ export class VideosService {
 				videoFile: true,
 				videoPublicId: true,
 				durationSeconds: true,
+				likesCount: true,
 				createdAt: true,
 				channel: {
 					select: {
@@ -184,6 +239,7 @@ export class VideosService {
 						name: true,
 						avatarUrl: true,
 						userId: true,
+						user: { select: { isPremium: true } },
 						_count: { select: { followers: true } },
 					},
 				},
@@ -191,7 +247,12 @@ export class VideosService {
 			},
 		});
 
-		for (const v of rows) {
+		const nowMs = Date.now();
+		const ranked = rankHomeFeedVideos(rows, taste, nowMs);
+		const start = (page - 1) * limit;
+		const slice = ranked.slice(start, start + limit);
+
+		for (const v of slice) {
 			if (v.durationSeconds != null) continue;
 			const d = await this.syncDurationFromStreamIfMissing(v.id, v.videoPublicId, v.videoFile, {
 				attempts: 3,
@@ -200,7 +261,17 @@ export class VideosService {
 			if (d != null) v.durationSeconds = d;
 		}
 
-		return rows.map(({ videoPublicId: _vp, ...rest }) => rest);
+		const items = slice.map(({ videoPublicId: _vp, channel, ...rest }) => {
+			const { user: _u, ...ch } = channel;
+			return { ...rest, channel: ch };
+		});
+
+		return {
+			items,
+			page,
+			limit,
+			hasMore: start + slice.length < ranked.length,
+		};
 	}
 
 	async findOne(id: string) {

@@ -561,13 +561,35 @@ export class UserService {
 						name: true,
 						username: true,
 						avatarUrl: true,
+						bannerUrl: true,
 						description: true,
+						branding: {
+							select: {
+								avatarFrameColor: true,
+								avatarFrameThickness: true,
+								avatarFrameStyle: true,
+							},
+						},
+						_count: {
+							select: {
+								followers: true,
+								videos: true,
+							},
+						},
 					},
 				},
 			},
 			orderBy: { createdAt: 'desc' },
 		});
 
-		return follows.map((f) => f.channel);
+		return follows.map((f) => {
+			const { branding, ...channel } = f.channel;
+			return {
+				...channel,
+				avatarFrameColor: branding?.avatarFrameColor ?? null,
+				avatarFrameThickness: branding?.avatarFrameThickness ?? null,
+				avatarFrameStyle: branding?.avatarFrameStyle ?? null,
+			};
+		});
 	}
 }

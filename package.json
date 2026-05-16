@@ -17,7 +17,14 @@
 		"test:watch": "jest --watch",
 		"test:cov": "jest --coverage",
 		"test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
-		"test:e2e": "jest --config ./test/jest-e2e.json"
+		"test:e2e": "jest --config ./test/jest-e2e.json",
+		"seed:videos": "ts-node prisma/seed-bulk-videos.ts",
+		"seed:synthetic": "ts-node prisma/seed-synthetic-catalog.ts",
+		"seed:demo-playback": "ts-node prisma/apply-demo-playback-url.ts",
+		"seed:extra-channels": "ts-node prisma/seed-extra-videos-channels.ts",
+		"seed:cleanup": "ts-node prisma/cleanup-seed-data.ts",
+		"seed:patch-synth-mp4": "ts-node prisma/patch-synth-demo-mp4.ts",
+		"seed:engage": "ts-node prisma/seed-synthetic-engagement.ts"
 	},
 	"prisma": {
 		"seed": "ts-node prisma/seed.ts"
