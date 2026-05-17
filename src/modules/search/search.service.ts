@@ -26,9 +26,10 @@ export class SearchService {
 			});
 
 			return channels.map((c) => ({
-				type: 'channel',
+				type: 'channel' as const,
 				label: `@${c.username}`,
 				id: c.id,
+				imageUrl: c.avatarUrl,
 			}));
 		}
 
@@ -54,7 +55,7 @@ export class SearchService {
 			const uniqueTags = [...new Set(allTags)].filter((t) => t.includes(tag)).slice(0, 5);
 
 			return uniqueTags.map((t) => ({
-				type: 'tag',
+				type: 'tag' as const,
 				label: `${t}`,
 				id: t,
 			}));
@@ -65,7 +66,7 @@ export class SearchService {
 				where: {
 					title: { contains: query, mode: Prisma.QueryMode.insensitive },
 				},
-				select: { id: true, title: true },
+				select: { id: true, title: true, thumbnailFile: true },
 				take: 5,
 			}),
 			this.prisma.channel.findMany({
@@ -75,21 +76,23 @@ export class SearchService {
 						{ username: { contains: query, mode: Prisma.QueryMode.insensitive } },
 					],
 				},
-				select: { id: true, name: true, username: true },
+				select: { id: true, name: true, username: true, avatarUrl: true },
 				take: 5,
 			}),
 		]);
 
 		return [
 			...channels.map((c) => ({
-				type: 'channel',
+				type: 'channel' as const,
 				label: c.name || `@${c.username}`,
 				id: c.id,
+				imageUrl: c.avatarUrl,
 			})),
 			...videos.map((v) => ({
-				type: 'video',
+				type: 'video' as const,
 				label: v.title,
 				id: v.id,
+				imageUrl: v.thumbnailFile,
 			})),
 		];
 	}

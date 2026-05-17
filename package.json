@@ -24,7 +24,8 @@
 		"seed:extra-channels": "ts-node prisma/seed-extra-videos-channels.ts",
 		"seed:cleanup": "ts-node prisma/cleanup-seed-data.ts",
 		"seed:patch-synth-mp4": "ts-node prisma/patch-synth-demo-mp4.ts",
-		"seed:engage": "ts-node prisma/seed-synthetic-engagement.ts"
+		"seed:engage": "ts-node prisma/seed-synthetic-engagement.ts",
+		"seed:gaming-demo": "ts-node prisma/seed-gaming-demo.ts"
 	},
 	"prisma": {
 		"seed": "ts-node prisma/seed.ts"

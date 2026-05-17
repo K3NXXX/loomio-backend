@@ -20,6 +20,7 @@ import { CloudflareImagesService } from '@/common/libs/cloudflare/cloudflare-ima
 import {
 	HOME_FEED_MAX_CANDIDATES,
 	HOME_TASTE_LOOKBACK_MS,
+	HOME_TASTE_MIN_DISTINCT_CHANNELS,
 	HOME_TASTE_MIN_VIEWS,
 	HOME_TASTE_TOP_CHANNELS,
 	HOME_TASTE_TOP_TAGS,
@@ -27,6 +28,16 @@ import {
 	parseVideoTagTokens,
 	rankHomeFeedVideos,
 } from './home-feed-rank.util';
+
+/** Watch sidebar: newest from this channel (capped), then newest tag matches from other channels. */
+const RECOMMENDED_SIDEBAR_TOTAL = 10;
+const RECOMMENDED_SIDEBAR_SAME_CHANNEL_MAX = 3;
+
+/**
+ * Extra public videos from taste-matched channels merged into the home pool so favorites
+ * are not dropped when they are older than the newest HOME_FEED_MAX_CANDIDATES.
+ */
+const HOME_FEED_TASTE_CHANNEL_EXTRA = 200;
 
 @Injectable()
 export class VideosService {
@@ -188,6 +199,9 @@ export class VideosService {
 		});
 		if (views.length < HOME_TASTE_MIN_VIEWS) return null;
 
+		const distinctChannelIds = new Set(views.map((v) => v.video.channelId));
+		if (distinctChannelIds.size < HOME_TASTE_MIN_DISTINCT_CHANNELS) return null;
+
 		const channelCounts = new Map<string, number>();
 		const tagCounts = new Map<string, number>();
 		for (const v of views) {
@@ -197,15 +211,25 @@ export class VideosService {
 				tagCounts.set(t, (tagCounts.get(t) ?? 0) + 1);
 			}
 		}
-		const topChannels = [...channelCounts.entries()]
+		const topChannelEntries = [...channelCounts.entries()]
 			.sort((a, b) => b[1] - a[1])
-			.slice(0, HOME_TASTE_TOP_CHANNELS)
-			.map(([id]) => id);
+			.slice(0, HOME_TASTE_TOP_CHANNELS);
+		const sumTopChannelViews = topChannelEntries.reduce((s, [, c]) => s + c, 0);
+		const channelWatchShare = new Map(
+			topChannelEntries.map(([id, c]) => [
+				id,
+				sumTopChannelViews > 0 ? c / sumTopChannelViews : 0,
+			]),
+		);
 		const topTags = [...tagCounts.entries()]
 			.sort((a, b) => b[1] - a[1])
 			.slice(0, HOME_TASTE_TOP_TAGS)
 			.map(([t]) => t);
-		return { channelIds: new Set(topChannels), tags: new Set(topTags) };
+		return {
+			channelIds: new Set(topChannelEntries.map(([id]) => id)),
+			tags: new Set(topTags),
+			channelWatchShare,
+		};
 	}
 
 	async findAll(viewerUserId?: string | null, query?: PublicVideosQueryDto) {
@@ -217,35 +241,55 @@ export class VideosService {
 				? await this.buildHomeTasteProfile(viewerUserId)
 				: null;
 
-		const rows = await this.prisma.video.findMany({
+		const homeFeedSelect = {
+			id: true,
+			title: true,
+			description: true,
+			tags: true,
+			thumbnailFile: true,
+			videoFile: true,
+			videoPublicId: true,
+			durationSeconds: true,
+			likesCount: true,
+			createdAt: true,
+			channel: {
+				select: {
+					id: true,
+					username: true,
+					name: true,
+					avatarUrl: true,
+					userId: true,
+					user: { select: { isPremium: true } },
+					_count: { select: { followers: true } },
+				},
+			},
+			_count: { select: { views: true } },
+		} satisfies Prisma.VideoSelect;
+
+		let rows = await this.prisma.video.findMany({
 			where: { visibility: 'public', publishType: 'now' },
 			orderBy: { createdAt: 'desc' },
 			take: HOME_FEED_MAX_CANDIDATES,
-			select: {
-				id: true,
-				title: true,
-				description: true,
-				tags: true,
-				thumbnailFile: true,
-				videoFile: true,
-				videoPublicId: true,
-				durationSeconds: true,
-				likesCount: true,
-				createdAt: true,
-				channel: {
-					select: {
-						id: true,
-						username: true,
-						name: true,
-						avatarUrl: true,
-						userId: true,
-						user: { select: { isPremium: true } },
-						_count: { select: { followers: true } },
-					},
-				},
-				_count: { select: { views: true } },
-			},
+			select: homeFeedSelect,
 		});
+
+		if (taste && taste.channelIds.size > 0) {
+			const fromWatchedChannels = await this.prisma.video.findMany({
+				where: {
+					visibility: 'public',
+					publishType: 'now',
+					channelId: { in: [...taste.channelIds] },
+				},
+				orderBy: { createdAt: 'desc' },
+				take: HOME_FEED_TASTE_CHANNEL_EXTRA,
+				select: homeFeedSelect,
+			});
+			const byId = new Map(rows.map((v) => [v.id, v]));
+			for (const v of fromWatchedChannels) {
+				if (!byId.has(v.id)) byId.set(v.id, v);
+			}
+			rows = [...byId.values()];
+		}
 
 		const nowMs = Date.now();
 		const ranked = rankHomeFeedVideos(rows, taste, nowMs);
@@ -490,38 +534,112 @@ export class VideosService {
 
 		if (!current) return [];
 
-		const tags = current.tags ? current.tags.split(/[\s,]+/).filter(Boolean) : [];
+		const tagTokens = current.tags ? current.tags.split(/[\s,]+/).filter(Boolean) : [];
 
-		return this.prisma.video.findMany({
+		const recommendedSelect = {
+			id: true,
+			title: true,
+			thumbnailFile: true,
+			durationSeconds: true,
+			createdAt: true,
+			likesCount: true,
+			dislikesCount: true,
+			tags: true,
+			videoPublicId: true,
+			videoFile: true,
+			visibility: true,
+			publishType: true,
+			_count: {
+				select: {
+					views: true,
+					comments: true,
+				},
+			},
+			channel: {
+				select: {
+					id: true,
+					username: true,
+					name: true,
+					userId: true,
+					avatarUrl: true,
+					_count: { select: { followers: true } },
+				},
+			},
+		} satisfies Prisma.VideoSelect;
+
+		const fromSameChannel = await this.prisma.video.findMany({
 			where: {
 				publishType: 'now',
 				visibility: 'public',
-				AND: [
-					{ id: { not: current.id } },
-					{
-						OR: [
-							{ channelId: current.channelId },
-							...tags.map((t) => ({
-								tags: { contains: t, mode: Prisma.QueryMode.insensitive },
-							})),
-						],
-					},
-				],
+				id: { not: current.id },
+				channelId: current.channelId,
 			},
-			select: {
-				id: true,
-				title: true,
-				thumbnailFile: true,
-				durationSeconds: true,
-				createdAt: true,
-				_count: { select: { views: true } },
-				channel: {
-					select: { name: true },
-				},
-			},
+			select: recommendedSelect,
 			orderBy: [{ createdAt: 'desc' }],
-			take: 10,
+			take: RECOMMENDED_SIDEBAR_SAME_CHANNEL_MAX,
 		});
+
+		const picked = new Set(fromSameChannel.map((v) => v.id));
+		const merged = [...fromSameChannel];
+
+		const tagOr: Prisma.VideoWhereInput[] =
+			tagTokens.length > 0
+				? tagTokens.map((t) => ({
+						tags: { contains: t, mode: Prisma.QueryMode.insensitive },
+					}))
+				: [];
+
+		if (merged.length < RECOMMENDED_SIDEBAR_TOTAL && tagOr.length > 0) {
+			const need = RECOMMENDED_SIDEBAR_TOTAL - merged.length;
+			const fromTags = await this.prisma.video.findMany({
+				where: {
+					publishType: 'now',
+					visibility: 'public',
+					id: { not: current.id },
+					channelId: { not: current.channelId },
+					OR: tagOr,
+				},
+				select: recommendedSelect,
+				orderBy: [{ createdAt: 'desc' }],
+				take: Math.max(need, RECOMMENDED_SIDEBAR_TOTAL) + 5,
+			});
+
+			for (const v of fromTags) {
+				if (merged.length >= RECOMMENDED_SIDEBAR_TOTAL) break;
+				if (!picked.has(v.id)) {
+					picked.add(v.id);
+					merged.push(v);
+				}
+			}
+		}
+
+		// Empty tags or no cross-channel tag hits: still show other channels (popularity + recency).
+		if (merged.length < RECOMMENDED_SIDEBAR_TOTAL) {
+			const idExclude =
+				picked.size > 0
+					? { not: current.id, notIn: [...picked] as string[] }
+					: { not: current.id };
+			const filler = await this.prisma.video.findMany({
+				where: {
+					publishType: 'now',
+					visibility: 'public',
+					id: idExclude,
+					channelId: { not: current.channelId },
+				},
+				select: recommendedSelect,
+				orderBy: [{ likesCount: 'desc' }, { createdAt: 'desc' }],
+				take: RECOMMENDED_SIDEBAR_TOTAL + 8,
+			});
+			for (const v of filler) {
+				if (merged.length >= RECOMMENDED_SIDEBAR_TOTAL) break;
+				if (!picked.has(v.id)) {
+					picked.add(v.id);
+					merged.push(v);
+				}
+			}
+		}
+
+		return merged.slice(0, RECOMMENDED_SIDEBAR_TOTAL);
 	}
 
 	async addToUserPlaylist(userId: string, videoId: string, playlistId: string) {

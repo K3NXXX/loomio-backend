@@ -44,6 +44,47 @@ async function main() {
 
 	console.log('Admin default channel created/exists:', defaultChannel.username);
 
+	const demoEmail = 'user@loomio.com';
+	const demoPassword = 'user123456789';
+	const demoUserHash = await argon2.hash(demoPassword);
+
+	const demoUser = await prisma.user.upsert({
+		where: { email: demoEmail },
+		update: {},
+		create: {
+			name: 'Demo User',
+			username: 'demouser',
+			email: demoEmail,
+			password: demoUserHash,
+			role: 'USER',
+			isActive: true,
+			uiPreference: {
+				create: {
+					theme: 'BLUE',
+				},
+			},
+		},
+	});
+
+	console.log('Demo user created/exists:', demoUser.email, '(username: demouser)');
+
+	await prisma.channel.upsert({
+		where: { username: 'demo-user-channel' },
+		update: {},
+		create: {
+			name: 'Demo User Channel',
+			username: 'demo-user-channel',
+			description: 'Default channel for demo user',
+			isDefault: true,
+			userId: demoUser.id,
+		},
+	});
+
+	console.log('\n--- Login (regular USER, not admin) ---');
+	console.log('Email or username:', demoEmail, '| demouser');
+	console.log('Password:', demoPassword);
+	console.log('----------------------------------------\n');
+
 	console.log('Seed completed successfully!');
 }
 

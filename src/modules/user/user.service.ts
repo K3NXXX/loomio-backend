@@ -506,7 +506,7 @@ export class UserService {
 			throw new NotFoundException('User not found');
 		}
 
-		const { currentPassword, newPassword, ...rest } = dto;
+		const { currentPassword, newPassword, email: _emailNotAppliedHere, ...rest } = dto;
 
 		let passwordHash: string | undefined;
 

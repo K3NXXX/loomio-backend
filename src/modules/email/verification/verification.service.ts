@@ -1,6 +1,7 @@
 import {
 	BadRequestException,
 	ConflictException,
+	ForbiddenException,
 	Injectable,
 	NotFoundException,
 } from '@nestjs/common';
@@ -16,6 +17,8 @@ import { UserService } from '@/modules/user/user.service';
 import { PrismaService } from '../../../common/prisma/prisma.service';
 import { ResendCodeDto } from './dto/resend-code.dto';
 import { VerifyCodeDto } from './dto/verify-code.dto';
+
+type EmailChangeMeta = { userId: string };
 
 @Injectable()
 export class VerificationService {
@@ -154,5 +157,160 @@ export class VerificationService {
 			where: { id: created.id },
 			include: { uiPreference: true },
 		});
+	}
+
+	async requestEmailChange(userId: string, rawEmail: string): Promise<Date> {
+		const email = rawEmail.trim().toLowerCase();
+
+		const existingUserToken = await this.prisma.token.findFirst({
+			where: {
+				type: TokenType.EMAIL_CHANGE,
+				meta: { path: ['userId'], equals: userId },
+			},
+		});
+
+		if (existingUserToken) {
+			const waitTime = getSecondsRemaining(existingUserToken.createdAt);
+			if (waitTime > 0 && existingUserToken.email === email) {
+				throw new ConflictException({
+					code: 'auth.waitBeforeResend',
+					waitTime,
+					expiresAt: new Date(Date.now() + waitTime * 1000),
+				});
+			}
+			await this.prisma.token.delete({ where: { id: existingUserToken.id } });
+		}
+
+		const user = await this.prisma.user.findUnique({ where: { id: userId } });
+		if (!user) throw new NotFoundException('User not found');
+		if (user.email.toLowerCase() === email) {
+			throw new BadRequestException({
+				code: 'user.sameEmail',
+				message: 'This is already your email',
+			});
+		}
+
+		const taken = await this.userService.findByEmail(email);
+		if (taken) {
+			throw new ConflictException('User with this email already exists');
+		}
+
+		const otherPending = await this.prisma.token.findUnique({
+			where: {
+				email_type: {
+					email,
+					type: TokenType.EMAIL_CHANGE,
+				},
+			},
+		});
+		if (otherPending) {
+			throw new ConflictException('This email is pending verification');
+		}
+
+		const code = generateCode();
+		const hashedCode = hashSecret(code);
+		const tokenExpiresAt = new Date(Date.now() + 10 * 60 * 1000);
+		const throttleExpiresAt = new Date(Date.now() + 60 * 1000);
+		const meta: EmailChangeMeta = { userId };
+
+		await this.prisma.token.create({
+			data: {
+				email,
+				code: hashedCode,
+				expiresAt: tokenExpiresAt,
+				type: TokenType.EMAIL_CHANGE,
+				meta,
+			},
+		});
+
+		await this.mailService.sendVerificationCode(email, code);
+
+		return throttleExpiresAt;
+	}
+
+	async verifyEmailChange(userId: string, email: string, code: string) {
+		const normalizedEmail = email.trim().toLowerCase();
+		const hashedCode = hashSecret(code);
+		const token = await this.prisma.token.findUnique({
+			where: {
+				code_type: {
+					code: hashedCode,
+					type: TokenType.EMAIL_CHANGE,
+				},
+			},
+		});
+
+		if (!token || new Date(token.expiresAt) < new Date()) {
+			if (token) await this.prisma.token.delete({ where: { id: token.id } });
+			throw new BadRequestException(
+				'The verification code is invalid or has expired. Please request a new one',
+			);
+		}
+
+		if (token.email !== normalizedEmail) {
+			throw new BadRequestException(
+				'The verification code is invalid or has expired. Please request a new one',
+			);
+		}
+
+		const meta = token.meta as EmailChangeMeta;
+		if (!meta?.userId || meta.userId !== userId) {
+			throw new ForbiddenException('Invalid verification code');
+		}
+
+		await this.prisma.user.update({
+			where: { id: userId },
+			data: { email: normalizedEmail },
+		});
+
+		await this.prisma.token.delete({ where: { id: token.id } });
+	}
+
+	async resendEmailChangeCode(userId: string, rawEmail: string): Promise<Date> {
+		const email = rawEmail.trim().toLowerCase();
+		const token = await this.prisma.token.findUnique({
+			where: {
+				email_type: {
+					email,
+					type: TokenType.EMAIL_CHANGE,
+				},
+			},
+		});
+
+		if (!token) {
+			throw new NotFoundException('No pending email change for this address');
+		}
+
+		const meta = token.meta as EmailChangeMeta;
+		if (!meta?.userId || meta.userId !== userId) {
+			throw new ForbiddenException('No pending email change for this address');
+		}
+
+		const waitTime = getSecondsRemaining(token.createdAt);
+		if (waitTime > 0) {
+			throw new ConflictException({
+				code: 'auth.waitBeforeResend',
+				waitTime,
+				expiresAt: new Date(Date.now() + waitTime * 1000),
+			});
+		}
+
+		const code = generateCode();
+		const hashedCode = hashSecret(code);
+		const tokenExpiresAt = new Date(Date.now() + 10 * 60 * 1000);
+		const throttleExpiresAt = new Date(Date.now() + 60 * 1000);
+
+		await this.prisma.token.update({
+			where: { id: token.id },
+			data: {
+				code: hashedCode,
+				expiresAt: tokenExpiresAt,
+				createdAt: new Date(),
+			},
+		});
+
+		await this.mailService.sendVerificationCode(email, code);
+
+		return throttleExpiresAt;
 	}
 }

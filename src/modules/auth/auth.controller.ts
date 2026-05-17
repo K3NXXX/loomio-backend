@@ -26,11 +26,14 @@ import { PasswordResetService } from '../email/password-reset/password-reset.ser
 import { ResendCodeDto } from '../email/verification/dto/resend-code.dto';
 import { VerifyCodeDto } from '../email/verification/dto/verify-code.dto';
 import { VerificationService } from '../email/verification/verification.service';
+import { RequestEmailChangeDto } from '../user/dto/request-email-change.dto';
+import { VerifyEmailChangeDto } from '../user/dto/verify-email-change.dto';
 import { AuthService } from './auth.service';
 import { CookieService } from './cookie.service';
 import { LoginDto, SignupDto } from './dto/auth.dto';
 import { TokenService } from './token.service';
 import { buildUiCookieSyncPayloadFromFlat } from '../user/user-ui-preference.util';
+import { CurrentUser } from '@/common/decorators/user.decorator';
 
 @Controller('auth')
 export class AuthController {
@@ -85,6 +88,33 @@ export class AuthController {
 	async resendCode(@Body() dto: ResendCodeDto) {
 		const response = await this.verificationService.resendVerificationCode(dto);
 		return { message: 'New verification code sent', expiresAt: response };
+	}
+
+	@Authorization()
+	@RateLimit(3, 300)
+	@Post('email-change/request')
+	async requestEmailChange(@CurrentUser('id') userId: string, @Body() dto: RequestEmailChangeDto) {
+		const expiresAt = await this.verificationService.requestEmailChange(userId, dto.email);
+		return {
+			message: 'Verification code sent to your email',
+			expiresAt,
+		};
+	}
+
+	@Authorization()
+	@RateLimit(5, 60)
+	@Post('email-change/verify')
+	async verifyEmailChange(@CurrentUser('id') userId: string, @Body() dto: VerifyEmailChangeDto) {
+		await this.verificationService.verifyEmailChange(userId, dto.email, dto.code);
+		return { success: true, message: 'Email updated successfully' };
+	}
+
+	@Authorization()
+	@RateLimit(5, 60)
+	@Post('email-change/resend')
+	async resendEmailChange(@CurrentUser('id') userId: string, @Body() dto: ResendCodeDto) {
+		const expiresAt = await this.verificationService.resendEmailChangeCode(userId, dto.email);
+		return { message: 'New verification code sent', expiresAt };
 	}
 
 	@RateLimit(5, 60)
