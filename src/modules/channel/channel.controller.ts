@@ -1,6 +1,8 @@
 import { Authorization } from '@/common/decorators/auth.decorators';
 import { CurrentUser } from '@/common/decorators/user.decorator';
 import { RequestWithUser } from '@/common/types/request-with-user.interface';
+import { JwtOptionalGuard } from '@/common/guards/jwt-optional.guard';
+import { OptionalCurrentUser } from '@/common/decorators/optional-user.decorator';
 import {
 	Body,
 	Controller,
@@ -13,6 +15,7 @@ import {
 	Req,
 	UploadedFile,
 	UploadedFiles,
+	UseGuards,
 	UseInterceptors,
 } from '@nestjs/common';
 import { FileFieldsInterceptor, FileInterceptor } from '@nestjs/platform-express';
@@ -46,13 +49,15 @@ export class ChannelController {
 		return this.channelService.getChannelTotalViews(username);
 	}
 
+	@UseGuards(JwtOptionalGuard)
 	@Get(':username')
 	getByUsername(
 		@Param('username') username: string,
 		@Query('scope') scope?: string,
+		@OptionalCurrentUser('id') requesterId?: string,
 	) {
 		const mode = scope === 'studio' ? 'studio' : 'full';
-		return this.channelService.findChannel(username, mode);
+		return this.channelService.findChannel(username, mode, requesterId);
 	}
 
 	@Authorization()

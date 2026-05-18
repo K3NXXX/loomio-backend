@@ -65,4 +65,9 @@ export class CreateVideoDto {
 	@IsString()
 	@IsNotEmpty()
 	videoPublicId: string;
+
+	@IsOptional()
+	@IsString()
+	@MaxLength(20000, { message: 'Chapters payload is too large' })
+	chapters?: string;
 }

@@ -1,5 +1,5 @@
-import { Audience, Visibility } from '@prisma/client';
-import { IsEnum, IsOptional, IsString } from 'class-validator';
+import { Audience, PublishType, Visibility } from '@prisma/client';
+import { IsEnum, IsOptional, IsString, MaxLength } from 'class-validator';
 
 export class UpdateVideoDto {
 	@IsOptional()
@@ -23,10 +23,15 @@ export class UpdateVideoDto {
 	audience?: Audience;
 
 	@IsOptional()
-	@IsString()
-	publishType?: string; 
+	@IsEnum(PublishType)
+	publishType?: PublishType;
 
 	@IsOptional()
 	@IsString()
-	publishDate?: string; 
+	publishDate?: string;
+
+	@IsOptional()
+	@IsString()
+	@MaxLength(20000, { message: 'Chapters payload is too large' })
+	chapters?: string;
 }

@@ -147,6 +147,9 @@ model Video {
 
   durationSeconds Int? @map("duration_seconds")
 
+  /// Ordered chapter markers: `[{ "title": string, "timecode": string }]`
+  chapters Json? @map("chapters")
+
   channelId String  @map("channel_id")
   channel   Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
 

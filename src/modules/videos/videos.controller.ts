@@ -103,7 +103,10 @@ export class VideosController {
 	}
 
 	@Get('studio/:channelId')
-	findAllForStudio(@Param('channelId') channelId: string) {
-		return this.videosService.findAllForChannelStudio(channelId);
+	findAllForStudio(
+		@Param('channelId') channelId: string,
+		@CurrentUser('id') userId: string,
+	) {
+		return this.videosService.findAllForChannelStudio(channelId, userId);
 	}
 }

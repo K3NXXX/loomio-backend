@@ -3,6 +3,14 @@ import { Injectable } from '@nestjs/common';
 import { NotificationType } from '@prisma/client';
 import { CreateNotificationDto } from './dto/notification.dto';
 
+/** Types shown under "Personal activity" in the app (keep in sync with frontend list). */
+const PERSONAL_INBOX_TYPES: NotificationType[] = [
+	NotificationType.COMMENT_REPLY,
+	NotificationType.VIDEO_PUBLISHED,
+	NotificationType.COMMENT_REMOVED,
+	NotificationType.LIKE_COMMENT,
+];
+
 @Injectable()
 export class NotificationService {
 	constructor(private prisma: PrismaService) {}
@@ -115,7 +123,7 @@ export class NotificationService {
 			where: {
 				userId,
 				isRead: false,
-				OR: [{ type: NotificationType.COMMENT_REPLY }, { type: NotificationType.VIDEO_PUBLISHED }],
+				type: { in: PERSONAL_INBOX_TYPES },
 			},
 			data: { isRead: true },
 		});
@@ -134,7 +142,7 @@ export class NotificationService {
 		return this.prisma.notification.deleteMany({
 			where: {
 				userId,
-				OR: [{ type: NotificationType.COMMENT_REPLY }, { type: NotificationType.VIDEO_PUBLISHED }],
+				type: { in: PERSONAL_INBOX_TYPES },
 			},
 		});
 	}

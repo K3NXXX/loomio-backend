@@ -7,6 +7,7 @@ import {
 	Injectable,
 	InternalServerErrorException,
 	NotFoundException,
+	UnauthorizedException,
 } from '@nestjs/common';
 import { CreateChannelDto } from './dto/create-channel.dto';
 import { UpdateChannelDto } from './dto/edit-channel.dto';
@@ -136,7 +137,11 @@ export class ChannelService {
 		return rows.map((r) => flattenChannelBranding(r));
 	}
 
-	async findChannel(username: string, scope: 'full' | 'studio' = 'full') {
+	async findChannel(
+		username: string,
+		scope: 'full' | 'studio' = 'full',
+		requesterUserId?: string,
+	) {
 		const normalized = username.replace(/^@/, '').toLowerCase();
 
 		const row = await this.prisma.channel.findFirst({
@@ -182,6 +187,16 @@ export class ChannelService {
 		});
 
 		if (!row) throw new NotFoundException('Channel not found');
+
+		if (scope === 'studio') {
+			if (!requesterUserId) {
+				throw new UnauthorizedException('Studio access requires authentication!');
+			}
+			if (row.userId !== requesterUserId) {
+				throw new ForbiddenException('You cannot access this channel studio');
+			}
+		}
+
 		return flattenChannelBranding(row);
 	}
 

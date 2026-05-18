@@ -17,6 +17,7 @@ import { UpdateVideoDto } from './dto/update-video.dto';
 import { CloudflareStreamService } from '@/common/libs/cloudflare/cloudflare-stream.service';
 import { extractCloudflareStreamUidFromVideoUrl } from '@/common/libs/cloudflare/stream-video.utils';
 import { CloudflareImagesService } from '@/common/libs/cloudflare/cloudflare-images.service';
+import { parseChaptersJson } from './utils/chapter-timecode.util';
 import {
 	HOME_FEED_MAX_CANDIDATES,
 	HOME_TASTE_LOOKBACK_MS,
@@ -97,6 +98,7 @@ export class VideosService {
 			publishType,
 			publishDate,
 			videoPublicId,
+			chapters: chaptersRaw,
 		} = createVideoDto;
 
 		const channel = await this.prisma.channel.findUnique({
@@ -110,6 +112,8 @@ export class VideosService {
 		if (channel.userId !== userId) {
 			throw new ForbiddenException('You are not allowed to upload to this channel');
 		}
+
+		const chaptersNormalized = parseChaptersJson(chaptersRaw);
 
 		try {
 			const uploadedThumbnail = await this.cloudflareImages.uploadImage(thumbnailFile);
@@ -139,6 +143,10 @@ export class VideosService {
 					thumbnailPublicId: uploadedThumbnail.id,
 					channelId,
 					durationSeconds,
+					chapters:
+						chaptersNormalized != null
+							? (chaptersNormalized as Prisma.InputJsonValue)
+							: undefined,
 				},
 			});
 
@@ -331,6 +339,7 @@ export class VideosService {
 				createdAt: true,
 				tags: true,
 				videoPublicId: true,
+				chapters: true,
 				likesCount: true,
 				dislikesCount: true,
 				_count: {
@@ -442,8 +451,16 @@ export class VideosService {
 				thumbnailFileUrl = uploadedThumbnail.secure_url;
 			}
 
-			const { title, description, tags, visibility, audience, publishType, publishDate } =
-				updateVideoDto;
+			const {
+				title,
+				description,
+				tags,
+				visibility,
+				audience,
+				publishType,
+				publishDate,
+				chapters: chaptersRaw,
+			} = updateVideoDto;
 
 			const data: any = {};
 
@@ -462,6 +479,14 @@ export class VideosService {
 
 			if (publishDate !== undefined) {
 				data.publishDate = publishDate ? new Date(publishDate) : null;
+			}
+
+			if (chaptersRaw !== undefined) {
+				const chaptersNormalized = parseChaptersJson(chaptersRaw);
+				data.chapters =
+					chaptersNormalized === undefined
+						? Prisma.JsonNull
+						: (chaptersNormalized as Prisma.InputJsonValue);
 			}
 
 			if (videoFileUrl) data.videoFile = videoFileUrl;
@@ -720,7 +745,16 @@ export class VideosService {
 		});
 	}
 
-	async findAllForChannelStudio(channelId: string) {
+	async findAllForChannelStudio(channelId: string, userId: string) {
+		const channel = await this.prisma.channel.findUnique({
+			where: { id: channelId },
+			select: { userId: true },
+		});
+		if (!channel) throw new NotFoundException('Channel not found');
+		if (channel.userId !== userId) {
+			throw new ForbiddenException('You are not allowed to view this studio');
+		}
+
 		const videos = await this.prisma.video.findMany({
 			where: { channelId },
 			orderBy: { createdAt: 'desc' },
@@ -739,6 +773,7 @@ export class VideosService {
 				createdAt: true,
 				restrictionModeratorReason: true,
 				restrictionModeratorNote: true,
+				chapters: true,
 				_count: { select: { views: true, likes: true, comments: true } },
 			},
 		});
