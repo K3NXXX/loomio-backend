@@ -25,7 +25,8 @@
 		"seed:cleanup": "ts-node prisma/cleanup-seed-data.ts",
 		"seed:patch-synth-mp4": "ts-node prisma/patch-synth-demo-mp4.ts",
 		"seed:engage": "ts-node prisma/seed-synthetic-engagement.ts",
-		"seed:gaming-demo": "ts-node prisma/seed-gaming-demo.ts"
+		"seed:gaming-demo": "ts-node prisma/seed-gaming-demo.ts",
+		"stripe:listen": "stripe listen --forward-to localhost:4000/payments/webhook"
 	},
 	"prisma": {
 		"seed": "ts-node prisma/seed.ts"

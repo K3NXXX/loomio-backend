@@ -1,6 +1,11 @@
 import { PrismaService } from '@/common/prisma/prisma.service';
 import { UserService } from '@/modules/user/user.service';
-import { Injectable, Logger } from '@nestjs/common';
+import {
+	BadRequestException,
+	ForbiddenException,
+	Injectable,
+	Logger,
+} from '@nestjs/common';
 import Stripe = require('stripe');
 
 @Injectable()
@@ -16,8 +21,16 @@ export class PaymentsService {
 	}
 
 	async createCheckoutSession(userId: string) {
+		const user = await this.prisma.user.findUnique({
+			where: { id: userId },
+			select: { isPremium: true },
+		});
+		if (user?.isPremium) {
+			throw new BadRequestException('Premium is already active on this account');
+		}
+
 		const session = await this.stripe.checkout.sessions.create({
-			mode: 'subscription',
+			mode: 'payment',
 			payment_method_types: ['card'],
 			line_items: [
 				{
@@ -28,12 +41,24 @@ export class PaymentsService {
 			success_url: `${process.env.FRONTEND_URL}/account/premium/success?session_id={CHECKOUT_SESSION_ID}`,
 			cancel_url: `${process.env.FRONTEND_URL}/account/premium`,
 			metadata: { userId },
-			subscription_data: {
+			payment_intent_data: {
 				metadata: { userId },
 			},
 		});
 
 		return { url: session.url };
+	}
+
+	async confirmCheckoutSession(userId: string, sessionId: string) {
+		const session = await this.stripe.checkout.sessions.retrieve(sessionId);
+		if (session.metadata?.userId !== userId) {
+			throw new ForbiddenException('Checkout session does not belong to this user');
+		}
+		if (session.mode !== 'payment' || session.payment_status !== 'paid') {
+			throw new BadRequestException('Payment is not completed yet');
+		}
+		await this.activatePremium(userId);
+		return { isPremium: true };
 	}
 
 	async handleWebhook(rawBody: Buffer, signature: string) {
@@ -50,42 +75,12 @@ export class PaymentsService {
 					payment_status?: string | null;
 					mode?: string | null;
 				};
-				if (session.mode !== 'subscription' || session.payment_status !== 'paid') {
+				if (session.mode !== 'payment' || session.payment_status !== 'paid') {
 					break;
 				}
 				const userId = session.metadata?.userId;
 				if (userId) {
-					await this.prisma.user.update({
-						where: { id: userId },
-						data: { isPremium: true },
-					});
-				}
-				break;
-			}
-			case 'customer.subscription.updated': {
-				const sub = event.data.object as {
-					id: string;
-					status?: string;
-					metadata?: Record<string, string> | null;
-				};
-				const terminal = new Set(['canceled', 'unpaid', 'incomplete_expired']);
-				if (sub.status && terminal.has(sub.status)) {
-					const userId = sub.metadata?.userId;
-					if (userId) {
-						await this.userService.revokePremium(userId);
-					} else {
-						this.logger.warn(`subscription.updated (${sub.status}) without userId metadata (${sub.id})`);
-					}
-				}
-				break;
-			}
-			case 'customer.subscription.deleted': {
-				const sub = event.data.object as { id: string; metadata?: Record<string, string> | null };
-				const userId = sub.metadata?.userId;
-				if (userId) {
-					await this.userService.revokePremium(userId);
-				} else {
-					this.logger.warn(`subscription.deleted without userId metadata (${sub.id})`);
+					await this.activatePremium(userId);
 				}
 				break;
 			}
@@ -110,6 +105,13 @@ export class PaymentsService {
 			default:
 				break;
 		}
+	}
+
+	private async activatePremium(userId: string) {
+		await this.prisma.user.update({
+			where: { id: userId },
+			data: { isPremium: true },
+		});
 	}
 
 	private async resolveUserIdFromCharge(charge: {

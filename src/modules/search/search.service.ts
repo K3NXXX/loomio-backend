@@ -97,8 +97,32 @@ export class SearchService {
 		];
 	}
 
-	async search(query: string) {
-		if (!query.trim()) return { videos: [], channels: [] };
+	private readonly videoSelect = {
+		id: true,
+		title: true,
+		thumbnailFile: true,
+		durationSeconds: true,
+		createdAt: true,
+		_count: { select: { views: true } },
+		channel: {
+			select: { id: true, name: true, username: true, avatarUrl: true, userId: true },
+		},
+	} as const;
+
+	async search(query: string, page = 1, limit = 20) {
+		const safePage = Math.max(1, page);
+		const safeLimit = Math.min(Math.max(1, limit), 50);
+
+		if (!query.trim()) {
+			return {
+				videos: [],
+				channels: [],
+				page: safePage,
+				limit: safeLimit,
+				totalVideos: 0,
+				hasMore: false,
+			};
+		}
 
 		if (query.startsWith('@')) {
 			const username = query.slice(1).trim();
@@ -126,6 +150,10 @@ export class SearchService {
 			return {
 				videos: [],
 				channels: channels.map((c) => flattenChannelBranding(c)),
+				page: safePage,
+				limit: safeLimit,
+				totalVideos: 0,
+				hasMore: false,
 			};
 		}
 
@@ -180,42 +208,34 @@ export class SearchService {
 			videosWhere = {};
 		}
 
-		const exactVideo = cleanedQuery
+		const exactMatch = cleanedQuery
 			? await this.prisma.video.findFirst({
 					where: {
 						title: { equals: cleanedQuery, mode: Prisma.QueryMode.insensitive },
 					},
-					select: {
-						id: true,
-						title: true,
-						thumbnailFile: true,
-						durationSeconds: true,
-						createdAt: true,
-						_count: { select: { views: true } },
-						channel: {
-							select: { id: true, name: true, username: true, avatarUrl: true, userId: true },
-						},
-					},
+					select: this.videoSelect,
 				})
 			: null;
 
+		const exactForPage = safePage === 1 ? exactMatch : null;
+
+		const relatedWhere: Prisma.VideoWhereInput = {
+			AND: [exactMatch ? { id: { not: exactMatch.id } } : {}, videosWhere],
+		};
+
+		const relatedCount = await this.prisma.video.count({ where: relatedWhere });
+		const exactOffset = exactMatch ? 1 : 0;
+		const firstPageRelatedTake = safeLimit - exactOffset;
+		const relatedSkip =
+			safePage === 1 ? 0 : firstPageRelatedTake + (safePage - 2) * safeLimit;
+		const relatedTake = safePage === 1 ? firstPageRelatedTake : safeLimit;
+
 		const relatedVideos = await this.prisma.video.findMany({
-			where: {
-				AND: [exactVideo ? { id: { not: exactVideo.id } } : {}, videosWhere],
-			},
-			select: {
-				id: true,
-				title: true,
-				thumbnailFile: true,
-				durationSeconds: true,
-				createdAt: true,
-				_count: { select: { views: true } },
-				channel: {
-					select: { id: true, name: true, username: true, avatarUrl: true, userId: true },
-				},
-			},
+			where: relatedWhere,
+			select: this.videoSelect,
 			orderBy: { createdAt: 'desc' },
-			take: 20,
+			skip: relatedSkip,
+			take: relatedTake,
 		});
 
 		let channels: {
@@ -265,9 +285,17 @@ export class SearchService {
 			channels = channelsRaw.map((c) => flattenChannelBranding(c));
 		}
 
+		const videos = exactForPage ? [exactForPage, ...relatedVideos] : relatedVideos;
+		const totalVideos = relatedCount + exactOffset;
+		const loadedCount = exactOffset + relatedSkip + relatedVideos.length;
+
 		return {
-			videos: exactVideo ? [exactVideo, ...relatedVideos] : relatedVideos,
+			videos,
 			channels,
+			page: safePage,
+			limit: safeLimit,
+			totalVideos,
+			hasMore: loadedCount < totalVideos,
 		};
 	}
 }

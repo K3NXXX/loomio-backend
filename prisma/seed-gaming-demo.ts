@@ -131,7 +131,7 @@ async function main() {
 						),
 					tags: row.tags.slice(0, 500),
 					visibility: Visibility.public,
-					audience: Audience.yes,
+					audience: Audience.no,
 					publishType: PublishType.now,
 					videoFile,
 					videoPublicId: null,

@@ -13,10 +13,19 @@ export class JwtOptionalGuard extends AuthGuard('jwt') {
 		return req;
 	}
 
+	async canActivate(context: ExecutionContext): Promise<boolean> {
+		try {
+			const result = await super.canActivate(context);
+			return result as boolean;
+		} catch {
+			return true;
+		}
+	}
+
 	handleRequest(err: any, user: any) {
-		if (err) {
+		if (err || !user) {
 			return null;
 		}
-		return user || null;
+		return user;
 	}
 }

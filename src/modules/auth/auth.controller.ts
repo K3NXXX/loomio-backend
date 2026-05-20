@@ -133,7 +133,7 @@ export class AuthController {
 		return { success: true, user, message: 'Logged in successfully' };
 	}
 
-	@RateLimit(3, 60)
+	@RateLimit(30, 60)
 	@Post('refresh')
 	async refresh(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
 		const refreshToken = req.cookies?.['refreshToken'] as string;

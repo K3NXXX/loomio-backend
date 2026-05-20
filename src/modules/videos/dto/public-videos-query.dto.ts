@@ -1,5 +1,7 @@
 import { Type } from 'class-transformer';
-import { IsInt, IsOptional, Max, Min } from 'class-validator';
+import { IsIn, IsInt, IsOptional, Max, Min } from 'class-validator';
+
+export type PublicVideoFeed = 'home' | 'kids';
 
 export class PublicVideosQueryDto {
 	@IsOptional()
@@ -14,4 +16,9 @@ export class PublicVideosQueryDto {
 	@Min(1)
 	@Max(60)
 	limit?: number;
+
+	/** `home` — general audience only; `kids` — kids-only tab */
+	@IsOptional()
+	@IsIn(['home', 'kids'])
+	feed?: PublicVideoFeed;
 }

@@ -1,6 +1,10 @@
 import { BadRequestException } from '@nestjs/common';
 
-const TC_SHAPE = /^(\d{1,3}:\d{2}:\d{2}|\d{1,3}:\d{2})$/;
+const MAX_CHAPTER_HOURS = 60;
+const MAX_CHAPTER_MINUTES = 59;
+const MAX_CHAPTER_SECONDS = 59;
+
+const TC_SHAPE = /^(\d{1,2}:\d{2}:\d{2}|\d{1,2}:\d{2})$/;
 
 export function isValidChapterTimecode(trimmed: string): boolean {
 	if (!TC_SHAPE.test(trimmed)) return false;
@@ -8,10 +12,22 @@ export function isValidChapterTimecode(trimmed: string): boolean {
 	if (parts.some((n) => !Number.isFinite(n))) return false;
 	if (parts.length === 2) {
 		const [m, s] = parts;
-		return m >= 0 && m <= 999 && s >= 0 && s <= 59;
+		return (
+			m >= 0 &&
+			m <= MAX_CHAPTER_MINUTES &&
+			s >= 0 &&
+			s <= MAX_CHAPTER_SECONDS
+		);
 	}
 	const [h, m, s] = parts;
-	return h >= 0 && h <= 999 && m >= 0 && m <= 59 && s >= 0 && s <= 59;
+	return (
+		h >= 0 &&
+		h <= MAX_CHAPTER_HOURS &&
+		m >= 0 &&
+		m <= MAX_CHAPTER_MINUTES &&
+		s >= 0 &&
+		s <= MAX_CHAPTER_SECONDS
+	);
 }
 
 export type ChapterPayload = { title: string; timecode: string };
@@ -58,7 +74,7 @@ export function parseChaptersJson(raw: string | undefined): ChapterPayload[] | u
 		}
 		if (!isValidChapterTimecode(timecode)) {
 			throw new BadRequestException(
-				`Chapter at index ${i}: invalid time (use mm:ss or h:mm:ss, seconds 00–59)`,
+				`Chapter at index ${i}: invalid time (use mm:ss or h:mm:ss; minutes and seconds 00–59, hours 00–60)`,
 			);
 		}
 		out.push({ title, timecode });

@@ -1,14 +1,19 @@
 import { CloudinaryService } from '@/common/libs/cloudinary/cloudinary.service';
 import { PrismaService } from '@/common/prisma/prisma.service';
 import {
+	BadGatewayException,
 	BadRequestException,
 	ForbiddenException,
+	GatewayTimeoutException,
 	Injectable,
 	InternalServerErrorException,
+	Logger,
 	NotFoundException,
 } from '@nestjs/common';
 import { NotificationType, Prisma } from '@prisma/client';
 import { UploadApiResponse } from 'cloudinary';
+import axios from 'axios';
+import type { Readable } from 'stream';
 import { NotificationsGateway } from '../notification/notification.gateway';
 import { NotificationService } from '../notification/notification.service';
 import { CreateVideoDto } from './dto/create-video.dto';
@@ -40,8 +45,20 @@ const RECOMMENDED_SIDEBAR_SAME_CHANNEL_MAX = 3;
  */
 const HOME_FEED_TASTE_CHANNEL_EXTRA = 200;
 
+function attachmentBasename(title: string | null | undefined, videoId: string, ext: '.mp4' | '.webm') {
+	const trimmed = String(title ?? '')
+		.replace(/[<>"/\\|?*\u0000-\u001F]+/g, '')
+		.trim()
+		.slice(0, 116);
+	let slug = trimmed.replace(/\s+/g, '-').replace(/-+/g, '-');
+	if (!slug) slug = `loomio-${videoId.slice(0, 12)}`;
+	return `${slug}${ext}`;
+}
+
 @Injectable()
 export class VideosService {
+	private readonly logger = new Logger(VideosService.name);
+
 	constructor(
 		private readonly prisma: PrismaService,
 		private readonly cloudinary: CloudinaryService,
@@ -193,10 +210,17 @@ export class VideosService {
 		return this.cloudflareStream.getVideoStatus(videoId);
 	}
 
-	private async buildHomeTasteProfile(userId: string): Promise<HomeTasteProfile | null> {
+	private async buildHomeTasteProfile(
+		userId: string,
+		audience: 'yes' | 'no',
+	): Promise<HomeTasteProfile | null> {
 		const since = new Date(Date.now() - HOME_TASTE_LOOKBACK_MS);
 		const views = await this.prisma.videoView.findMany({
-			where: { userId, createdAt: { gte: since } },
+			where: {
+				userId,
+				createdAt: { gte: since },
+				video: { audience },
+			},
 			select: {
 				video: {
 					select: { channelId: true, tags: true },
@@ -243,10 +267,12 @@ export class VideosService {
 	async findAll(viewerUserId?: string | null, query?: PublicVideosQueryDto) {
 		const page = Math.max(1, query?.page ?? 1);
 		const limit = Math.min(60, Math.max(1, query?.limit ?? 24));
+		const feed = query?.feed === 'kids' ? 'kids' : 'home';
+		const audience = feed === 'kids' ? ('yes' as const) : ('no' as const);
 
 		const taste =
 			viewerUserId != null && viewerUserId !== ''
-				? await this.buildHomeTasteProfile(viewerUserId)
+				? await this.buildHomeTasteProfile(viewerUserId, audience)
 				: null;
 
 		const homeFeedSelect = {
@@ -274,8 +300,14 @@ export class VideosService {
 			_count: { select: { views: true } },
 		} satisfies Prisma.VideoSelect;
 
+		const publicFeedWhere = {
+			visibility: 'public' as const,
+			publishType: 'now' as const,
+			audience,
+		};
+
 		let rows = await this.prisma.video.findMany({
-			where: { visibility: 'public', publishType: 'now' },
+			where: publicFeedWhere,
 			orderBy: { createdAt: 'desc' },
 			take: HOME_FEED_MAX_CANDIDATES,
 			select: homeFeedSelect,
@@ -284,8 +316,7 @@ export class VideosService {
 		if (taste && taste.channelIds.size > 0) {
 			const fromWatchedChannels = await this.prisma.video.findMany({
 				where: {
-					visibility: 'public',
-					publishType: 'now',
+					...publicFeedWhere,
 					channelId: { in: [...taste.channelIds] },
 				},
 				orderBy: { createdAt: 'desc' },
@@ -340,6 +371,7 @@ export class VideosService {
 				tags: true,
 				videoPublicId: true,
 				chapters: true,
+				audience: true,
 				likesCount: true,
 				dislikesCount: true,
 				_count: {
@@ -396,6 +428,144 @@ export class VideosService {
 		}
 
 		return video;
+	}
+
+	async pipePremiumDownload(
+		userId: string,
+		videoId: string,
+	): Promise<{
+		stream: Readable;
+		contentType: string;
+		contentDisposition: string;
+		contentLength?: number;
+	}> {
+		const subscriber = await this.prisma.user.findUnique({
+			where: { id: userId },
+			select: { isPremium: true },
+		});
+
+		if (!subscriber) {
+			throw new ForbiddenException('User not found');
+		}
+		if (!subscriber.isPremium) {
+			throw new ForbiddenException('Premium subscription required to download videos');
+		}
+
+		const video = await this.prisma.video.findFirst({
+			where: {
+				id: videoId,
+				visibility: 'public',
+			},
+			select: {
+				title: true,
+				videoFile: true,
+				videoPublicId: true,
+			},
+		});
+
+		if (!video) {
+			throw new NotFoundException('Video not found or cannot be downloaded');
+		}
+
+		let upstreamUrl: string;
+		let ext: '.mp4' | '.webm' = '.mp4';
+
+		const uid = this.streamUidForVideo({
+			videoPublicId: video.videoPublicId,
+			videoFile: video.videoFile,
+		});
+
+		if (uid) {
+			try {
+				upstreamUrl = await this.cloudflareStream.resolveMp4DownloadUrl(uid);
+			} catch (e: unknown) {
+				const msg =
+					e instanceof Error ? e.message : 'Could not prepare Cloudflare Stream MP4 download';
+				this.logger.warn(`pipePremiumDownload resolveMp4 videoId=${videoId} uid=${uid}: ${msg}`);
+				if (/timed out/i.test(msg)) {
+					throw new GatewayTimeoutException(msg);
+				}
+				throw new BadGatewayException(msg);
+			}
+		} else {
+			const vf = (video.videoFile || '').trim();
+			const pathOnly = vf.split('?')[0] ?? vf;
+			if (/^https?:\/\/.+/i.test(vf) && /\.webm$/i.test(pathOnly)) {
+				ext = '.webm';
+				upstreamUrl = vf;
+			} else if (/^https?:\/\/.+/i.test(vf) && /\.mp4$/i.test(pathOnly)) {
+				ext = '.mp4';
+				upstreamUrl = vf;
+			} else {
+				throw new BadRequestException('Download is not available for this video');
+			}
+		}
+
+		let stream: Readable;
+		let contentType: string;
+		let upstreamContentLength: number | undefined;
+
+		try {
+			const resp = await axios.get<Readable>(upstreamUrl, {
+				responseType: 'stream',
+				maxRedirects: 10,
+				maxBodyLength: Infinity,
+				maxContentLength: Infinity,
+				validateStatus: (s) => s >= 200 && s < 400,
+			});
+
+			stream = resp.data;
+			contentType =
+				(typeof resp.headers['content-type'] === 'string' ? resp.headers['content-type'] : null) ??
+				(ext === '.webm' ? 'video/webm' : 'video/mp4');
+
+			upstreamContentLength = VideosService.pickPositiveContentLength(
+				resp.headers['content-length'],
+			);
+		} catch (e: unknown) {
+			let detail = `Upstream fetch failed for ${videoId}`;
+			if (axios.isAxiosError(e)) {
+				const hs = e.response?.status ?? 'n/a';
+				const hdr = typeof e.response?.headers?.['content-type'] === 'string' ? e.response.headers['content-type'] : '';
+				detail += ` — HTTP ${hs} ${e.code ?? ''}${hdr ? ` ct=${hdr}` : ''}`;
+				const shortUrl = upstreamUrl.startsWith('http') ? upstreamUrl.split('?')[0].slice(0, 88) + '…' : upstreamUrl;
+				this.logger.warn(`pipePremiumDownload stream GET ${detail} url=${shortUrl}`);
+				if (e.response?.status === 403) {
+					throw new BadGatewayException(
+						'CDN denied access to the MP4 (403). If Stream uses signed URLs, enable downloadable MP4 signing.',
+					);
+				}
+				if (e.response?.status === 404) {
+					throw new BadGatewayException(
+						'MP4 not found at CDN (404). Retry after Cloudflare finishes encoding the download.',
+					);
+				}
+			}
+			this.logger.warn(`pipePremiumDownload stream GET unexpected: ${e instanceof Error ? e.message : String(e)}`);
+			throw new BadGatewayException(`${detail}: ${e instanceof Error ? e.message : String(e)}`);
+		}
+
+		const basename = attachmentBasename(video.title, videoId, ext);
+		const contentDisposition =
+			`attachment; filename="video${ext}"; filename*=UTF-8''${encodeURIComponent(basename)}`;
+
+		return {
+			stream,
+			contentType,
+			contentDisposition,
+			...(upstreamContentLength != null ? { contentLength: upstreamContentLength } : {}),
+		};
+	}
+
+	/** Axios / Node may surface Content-Length as string | string[]. */
+	static pickPositiveContentLength(raw: unknown): number | undefined {
+		let s: string | undefined;
+		if (typeof raw === 'string') s = raw;
+		else if (Array.isArray(raw) && raw.length && typeof raw[0] === 'string') s = raw[0];
+		if (!s?.trim()) return undefined;
+		const n = parseInt(String(s).trim(), 10);
+		if (!Number.isFinite(n) || n <= 0) return undefined;
+		return n;
 	}
 
 	async update(
@@ -554,10 +724,13 @@ export class VideosService {
 	async getRecommended(videoId: string) {
 		const current = await this.prisma.video.findUnique({
 			where: { id: videoId },
-			select: { id: true, tags: true, channelId: true },
+			select: { id: true, tags: true, channelId: true, audience: true },
 		});
 
 		if (!current) return [];
+
+		const audience = current.audience ?? 'no';
+		const audienceWhere = { audience };
 
 		const tagTokens = current.tags ? current.tags.split(/[\s,]+/).filter(Boolean) : [];
 
@@ -620,6 +793,7 @@ export class VideosService {
 				where: {
 					publishType: 'now',
 					visibility: 'public',
+					...audienceWhere,
 					id: { not: current.id },
 					channelId: { not: current.channelId },
 					OR: tagOr,
@@ -648,6 +822,7 @@ export class VideosService {
 				where: {
 					publishType: 'now',
 					visibility: 'public',
+					...audienceWhere,
 					id: idExclude,
 					channelId: { not: current.channelId },
 				},

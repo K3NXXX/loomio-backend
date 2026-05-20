@@ -82,7 +82,7 @@ async function main() {
 						),
 					tags,
 					visibility: Visibility.public,
-					audience: Audience.yes,
+					audience: Audience.no,
 					publishType: PublishType.now,
 					videoFile,
 					videoPublicId: null,

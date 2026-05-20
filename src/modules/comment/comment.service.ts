@@ -143,23 +143,43 @@ export class CommentService {
 		const video = await this.prisma.video.findUnique({ where: { id: videoId } });
 		if (!video) throw new NotFoundException('Post not found');
 
-		const [comments, total] = await Promise.all([
+		const safePage = Math.max(1, page);
+		const safeTake = Math.min(Math.max(1, take), 50);
+
+		const [roots, totalRoots] = await Promise.all([
 			this.prisma.videoComment.findMany({
-				where: { videoId },
+				where: { videoId, parentId: null },
 				orderBy: { createdAt: 'desc' },
-				skip: (page - 1) * take,
-				take,
-				select: this.select(),
+				skip: (safePage - 1) * safeTake,
+				take: safeTake,
+				select: {
+					...this.select(),
+					replies: {
+						orderBy: { createdAt: 'asc' },
+						select: this.select(),
+					},
+				},
 			}),
-			this.prisma.videoComment.count({ where: { videoId } }),
+			this.prisma.videoComment.count({ where: { videoId, parentId: null } }),
 		]);
 
+		const data = roots.map(({ replies, ...root }) => {
+			const formattedRoot = this.formatOne(root, userId);
+			return {
+				...formattedRoot,
+				replies: replies.map((reply) => this.formatOne(reply, userId)),
+			};
+		});
+
+		const totalPages = Math.ceil(totalRoots / safeTake) || 1;
+
 		return {
-			data: this.format(comments, userId),
-			total,
-			page,
-			take,
-			totalPages: Math.ceil(total / take),
+			data,
+			total: totalRoots,
+			page: safePage,
+			take: safeTake,
+			totalPages,
+			hasMore: safePage < totalPages,
 		};
 	}
 
@@ -332,16 +352,16 @@ export class CommentService {
 		};
 	}
 
-	private format(comments: any[], currentUserId?: string) {
-		return comments.map(({ reactions, likesCount, dislikesCount, ...rest }) => {
-			const userReaction = reactions.find((r) => r.userId === currentUserId)?.type ?? null;
+	private formatOne(comment: any, currentUserId?: string) {
+		const { reactions, likesCount, dislikesCount, replies: _replies, ...rest } = comment;
+		void _replies;
+		const userReaction = reactions.find((r: { userId: string }) => r.userId === currentUserId)?.type ?? null;
 
-			return {
-				...rest,
-				likes: likesCount,
-				dislikes: dislikesCount,
-				userReaction,
-			};
-		});
+		return {
+			...rest,
+			likes: likesCount,
+			dislikes: dislikesCount,
+			userReaction,
+		};
 	}
 }

@@ -350,7 +350,7 @@ async function main() {
 						),
 					tags: tagsFor(topic, v),
 					visibility: Visibility.public,
-					audience: Audience.yes,
+					audience: Audience.no,
 					publishType: PublishType.now,
 					videoFile: videoFileBase,
 					videoPublicId,

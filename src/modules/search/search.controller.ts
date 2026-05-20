@@ -1,4 +1,5 @@
 import { Controller, Get, Query } from '@nestjs/common';
+import { SearchQueryDto } from './dto/search-query.dto';
 import { SearchService } from './search.service';
 
 @Controller('search')
@@ -11,7 +12,7 @@ export class SearchController {
 	}
 
 	@Get()
-	async search(@Query('q') query: string) {
-		return this.searchService.search(query);
+	async search(@Query() dto: SearchQueryDto) {
+		return this.searchService.search(dto.q ?? '', dto.page ?? 1, dto.limit ?? 20);
 	}
 }

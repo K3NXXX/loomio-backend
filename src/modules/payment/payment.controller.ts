@@ -1,4 +1,4 @@
-import { Controller, Headers, HttpCode, Post, Req, Res, UsePipes } from "@nestjs/common"
+import { Body, Controller, Headers, HttpCode, Post, Req, Res, UsePipes } from "@nestjs/common"
 import { PaymentsService } from "./payment.service"
 import { Authorization } from "@/common/decorators/auth.decorators"
 import { CurrentUser } from "@/common/decorators/user.decorator"
@@ -12,6 +12,15 @@ export class PaymentsController {
     @Post('create-checkout-session')
     createCheckoutSession(@CurrentUser('id') userId: string) {
         return this.paymentsService.createCheckoutSession(userId)
+    }
+
+    @Authorization()
+    @Post('confirm-checkout')
+    confirmCheckout(
+        @CurrentUser('id') userId: string,
+        @Body('sessionId') sessionId: string,
+    ) {
+        return this.paymentsService.confirmCheckoutSession(userId, sessionId)
     }
 
     @Post('webhook')

@@ -11,6 +11,7 @@ import {
 	Param,
 	Patch,
 	Post,
+	StreamableFile,
 	UploadedFile,
 	UploadedFiles,
 	UseInterceptors,
@@ -45,6 +46,21 @@ export class VideosController {
 	@Get('status/:id')
 	getStatus(@Param('id') id: string) {
 		return this.videosService.getStatus(id);
+	}
+
+	/** Premium-only: streams video bytes with attachment so the browser saves the file (no JSON redirect URL). */
+	@Get(':id/download')
+	async getPremiumDownloadFile(
+		@CurrentUser('id') userId: string,
+		@Param('id') videoId: string,
+	): Promise<StreamableFile> {
+		const { stream, contentType, contentDisposition, contentLength } =
+			await this.videosService.pipePremiumDownload(userId, videoId);
+		return new StreamableFile(stream, {
+			type: contentType,
+			disposition: contentDisposition,
+			...(typeof contentLength === 'number' && contentLength > 0 ? { length: contentLength } : {}),
+		});
 	}
 
 	@Patch(':id')
