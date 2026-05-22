@@ -1,7 +1,7 @@
 import { CloudinaryService } from '@/common/libs/cloudinary/cloudinary.service';
 import { PrismaService } from '@/common/prisma/prisma.service';
-import { BadRequestException, Injectable } from '@nestjs/common';
-import { Audience, NotificationType, ReportReason } from '@prisma/client';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { Audience, NotificationType, Prisma, ReportReason } from '@prisma/client';
 import { NotificationsGateway } from '../notification/notification.gateway';
 import { NotificationService } from '../notification/notification.service';
 import { CreateReportDto } from './dto/create-report.dto';
@@ -18,33 +18,69 @@ export class ReportService {
 	) {}
 
 	async create(authorId: string, dto: CreateReportDto) {
-		const { reason, message, videoId, commentId } = dto;
+		const { reason, message } = dto;
+		const videoId = dto.videoId?.trim() || undefined;
+		const commentId = dto.commentId?.trim() || undefined;
 
 		if (!videoId && !commentId) {
 			throw new BadRequestException('Either videoId or commentId is required.');
 		}
 
+		if (videoId && commentId) {
+			throw new BadRequestException('Report either a video or a comment, not both.');
+		}
+
+		if (commentId) {
+			const comment = await this.prisma.videoComment.findUnique({
+				where: { id: commentId },
+				select: { id: true },
+			});
+			if (!comment) {
+				throw new NotFoundException('Comment not found.');
+			}
+		} else if (videoId) {
+			const video = await this.prisma.video.findUnique({
+				where: { id: videoId },
+				select: { id: true },
+			});
+			if (!video) {
+				throw new NotFoundException('Video not found.');
+			}
+		}
+
 		const existingReport = await this.prisma.report.findFirst({
-			where: {
-				authorId,
-				videoId: videoId ?? undefined,
-				commentId: commentId ?? undefined,
-			},
+			where: commentId
+				? { authorId, commentId }
+				: { authorId, videoId: videoId! },
 		});
 
 		if (existingReport) {
 			throw new BadRequestException('You have already reported this item.');
 		}
 
-		return this.prisma.report.create({
-			data: {
-				reason,
-				message: reason === 'OTHER' ? message : null,
-				authorId,
-				videoId,
-				commentId,
-			},
-		});
+		try {
+			return await this.prisma.report.create({
+				data: {
+					reason,
+					message:
+						reason === ReportReason.OTHER ? (message?.trim() || null) : null,
+					author: { connect: { id: authorId } },
+					...(commentId
+						? { comment: { connect: { id: commentId } } }
+						: { video: { connect: { id: videoId! } } }),
+				},
+			});
+		} catch (error) {
+			if (
+				error instanceof Prisma.PrismaClientKnownRequestError &&
+				error.code === 'P2003'
+			) {
+				throw new BadRequestException(
+					'Unable to submit report. The comment or video may no longer exist.',
+				);
+			}
+			throw error;
+		}
 	}
 
 	async getVideoReports() {
