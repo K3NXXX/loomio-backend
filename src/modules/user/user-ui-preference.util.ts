@@ -28,7 +28,6 @@ export function uiPrefsFromRecord(pref: UserUiPreference | UiPrefsFields | null 
 	};
 }
 
-/** Public API shape: same fields as legacy flat `users` columns. */
 export function toPublicUserWithUiPrefs(
 	user: Omit<User, 'password'> & { uiPreference?: UserUiPreference | null },
 ) {
@@ -44,7 +43,6 @@ export function toPublicUserWithUiPrefs(
 	};
 }
 
-/** Payload for CookieService.syncUiCookies (effective theme + custom when Premium). */
 export function buildUiCookieSyncPayload(
 	isPremium: boolean,
 	prefs: ReturnType<typeof uiPrefsFromRecord>,
@@ -72,7 +70,6 @@ export function buildUiCookieSyncPayload(
 	};
 }
 
-/** When the user payload is already flattened (e.g. after `toPublicUserWithUiPrefs`). */
 export function buildUiCookieSyncPayloadFromFlat(user: {
 	isPremium: boolean;
 	theme: ThemeColors;

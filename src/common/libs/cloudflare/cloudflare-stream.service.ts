@@ -123,7 +123,6 @@ export class CloudflareStreamService {
 				const d = await this.getVideoDurationSeconds(videoId);
 				if (d != null) return d;
 			} catch {
-				/* network / 4xx — try again */
 			}
 		}
 		return null;

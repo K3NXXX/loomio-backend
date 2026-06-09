@@ -3,7 +3,6 @@ import { Injectable } from '@nestjs/common';
 import { NotificationType } from '@prisma/client';
 import { CreateNotificationDto } from './dto/notification.dto';
 
-/** Types shown under "Personal activity" in the app (keep in sync with frontend list). */
 const PERSONAL_INBOX_TYPES: NotificationType[] = [
 	NotificationType.COMMENT_REPLY,
 	NotificationType.VIDEO_PUBLISHED,

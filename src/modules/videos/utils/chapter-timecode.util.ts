@@ -35,7 +35,6 @@ export type ChapterPayload = { title: string; timecode: string };
 const MAX_CHAPTERS = 40;
 const TITLE_MAX = 120;
 
-/** Parse and validate chapters from multipart string or return undefined (no chapters). */
 export function parseChaptersJson(raw: string | undefined): ChapterPayload[] | undefined {
 	if (raw == null || raw.trim() === '') return undefined;
 

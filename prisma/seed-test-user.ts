@@ -1,11 +1,7 @@
-/**
- * One-off: create a random USER for manual testing (login / home feed).
- * Run from repo root: npx ts-node prisma/seed-test-user.ts
- */
-import * as fs from 'node:fs';
-import * as path from 'node:path';
 import { PrismaClient } from '@prisma/client';
 import { argon2id, hash } from 'argon2';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 
 function loadDotenvFromBackendRoot() {
 	const envPath = path.resolve(__dirname, '..', '.env');
@@ -17,10 +13,7 @@ function loadDotenvFromBackendRoot() {
 		if (i === -1) continue;
 		const k = t.slice(0, i).trim();
 		let v = t.slice(i + 1).trim();
-		if (
-			(v.startsWith('"') && v.endsWith('"')) ||
-			(v.startsWith("'") && v.endsWith("'"))
-		) {
+		if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) {
 			v = v.slice(1, -1);
 		}
 		if (process.env[k] === undefined) process.env[k] = v;

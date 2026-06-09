@@ -48,7 +48,6 @@ export class VideosController {
 		return this.videosService.getStatus(id);
 	}
 
-	/** Premium-only: streams video bytes with attachment so the browser saves the file (no JSON redirect URL). */
 	@Get(':id/download')
 	async getPremiumDownloadFile(
 		@CurrentUser('id') userId: string,

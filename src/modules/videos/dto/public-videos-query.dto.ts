@@ -17,7 +17,6 @@ export class PublicVideosQueryDto {
 	@Max(60)
 	limit?: number;
 
-	/** `home` — general audience only; `kids` — kids-only tab */
 	@IsOptional()
 	@IsIn(['home', 'kids'])
 	feed?: PublicVideoFeed;

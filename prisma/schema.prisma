@@ -26,15 +26,15 @@ datasource db {
 	  uiPreference UserUiPreference?
 
 	  accounts Account[]
-  sessions Session[]
-  channels Channel[]
-  reports  Report[]
+    sessions Session[]
+    channels Channel[]
+    reports  Report[]
 
-  VideoLike        VideoLike[]
-  VideoView        VideoView[]
-  VideoComment     VideoComment[]
-  VideoCommentLike VideoCommentReaction[]
-  ChannelFollow    ChannelFollow[]
+    VideoLike        VideoLike[]
+    VideoView        VideoView[]
+    VideoComment     VideoComment[]
+    VideoCommentLike VideoCommentReaction[]
+    ChannelFollow    ChannelFollow[]
 
   createdAt             DateTime       @default(now()) @map("created_at")
   updatedAt             DateTime       @updatedAt @map("updated_at")
@@ -132,7 +132,6 @@ model Video {
   description   String?     @db.Text
   tags          String?     @db.VarChar(500)
   visibility    Visibility
-  /// Snapshot from moderator action when visibility becomes restricted (fallback: latest resolved report)
   restrictionModeratorReason ReportReason? @map("restriction_moderator_reason")
   restrictionModeratorNote   String?       @map("restriction_moderator_note") @db.Text
 
@@ -147,7 +146,6 @@ model Video {
 
   durationSeconds Int? @map("duration_seconds")
 
-  /// Ordered chapter markers: `[{ "title": string, "timecode": string }]`
   chapters Json? @map("chapters")
 
   channelId String  @map("channel_id")
@@ -353,7 +351,6 @@ model Report {
   assignedToId String?
   assignedTo   User?   @relation("ReportAssignedTo", fields: [assignedToId], references: [id])
 
-  /// Reason recorded when a moderator restricts the video (may differ from reporter `reason`)
   moderatorRestrictionReason ReportReason? @map("moderator_restriction_reason")
   moderatorNote              String?       @map("moderator_note") @db.Text
 
@@ -386,7 +383,6 @@ enum Visibility {
   public
   private
   restricted
-  /// Owner resubmitted corrected video; awaiting moderator decision (not publicly visible)
   pending_review
 }
 

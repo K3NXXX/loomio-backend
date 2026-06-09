@@ -1,6 +1,5 @@
 import { ThemeColors } from '@prisma/client'
 
-/** Stored enum values that require an active Premium subscription. */
 export const PREMIUM_THEME_IDS = new Set<ThemeColors>([
 	ThemeColors.PREMIUM,
 	ThemeColors.PREMIUM_ORCHID,

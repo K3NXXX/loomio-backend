@@ -1,12 +1,8 @@
-/**
- * 3 gaming channels + public demo videos (shared MP4, picsum thumbs, gaming tags).
- * Run: npx ts-node prisma/seed-gaming-demo.ts
- */
+import { Audience, PrismaClient, PublishType, Visibility } from '@prisma/client';
 import * as argon2 from 'argon2';
 import * as crypto from 'node:crypto';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { Audience, PrismaClient, PublishType, Visibility } from '@prisma/client';
 
 function loadDotenvFromBackendRoot() {
 	const envPath = path.resolve(__dirname, '..', '.env');
@@ -18,10 +14,7 @@ function loadDotenvFromBackendRoot() {
 		if (i === -1) continue;
 		const k = t.slice(0, i).trim();
 		let v = t.slice(i + 1).trim();
-		if (
-			(v.startsWith('"') && v.endsWith('"')) ||
-			(v.startsWith("'") && v.endsWith("'"))
-		) {
+		if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) {
 			v = v.slice(1, -1);
 		}
 		if (process.env[k] === undefined) process.env[k] = v;
@@ -64,7 +57,10 @@ const GAMING_CHANNELS: {
 		name: 'Strategy & Sims Lab',
 		description: 'Покрокові стратегії, менеджмент, симулятори.',
 		videos: [
-			{ title: 'Старт у глобальній стратегії для новачків', tags: 'gaming strategy guide tutorial' },
+			{
+				title: 'Старт у глобальній стратегії для новачків',
+				tags: 'gaming strategy guide tutorial',
+			},
 			{ title: 'Економіка за 10 ходів — не прогоріти', tags: 'gaming strategy economy tips' },
 			{ title: 'Новий тактичний роглайк — чи варто', tags: 'gaming strategy roguelike review' },
 			{ title: 'Будуємо місто мрії (симулятор)', tags: 'gaming sim city builder relaxing' },
@@ -79,10 +75,7 @@ async function main() {
 	const batch = crypto.randomBytes(3).toString('hex');
 	const password = process.env.SEED_GAMING_PASSWORD?.trim() || 'GamingDemo!2026';
 	const hashedPassword = await argon2.hash(password);
-	const videoFile = (process.env.SEED_GAMING_DEMO_MP4_URL?.trim() || DEFAULT_MP4).slice(
-		0,
-		255,
-	);
+	const videoFile = (process.env.SEED_GAMING_DEMO_MP4_URL?.trim() || DEFAULT_MP4).slice(0, 255);
 
 	const created: { channel: string; user: string; email: string }[] = [];
 
@@ -124,25 +117,21 @@ async function main() {
 			await prisma.video.create({
 				data: {
 					title: row.title.slice(0, 200),
-					description:
-						`Демо ігрового каналу «${def.name}» для тестів рекомендацій і пошуку.`.slice(
-							0,
-							2000,
-						),
+					description: `Демо ігрового каналу «${def.name}» для тестів рекомендацій і пошуку.`.slice(
+						0,
+						2000,
+					),
 					tags: row.tags.slice(0, 500),
 					visibility: Visibility.public,
 					audience: Audience.no,
 					publishType: PublishType.now,
 					videoFile,
 					videoPublicId: null,
-					thumbnailFile: `https://picsum.photos/seed/gv-${batch}-${i}-${v}/1280/720`.slice(
-						0,
-						255,
-					),
+					thumbnailFile: `https://picsum.photos/seed/gv-${batch}-${i}-${v}/1280/720`.slice(0, 255),
 					channelId: channel.id,
 					likesCount: (i * 200 + v * 73) % 5000,
 					dislikesCount: (i * 5 + v) % 80,
-					durationSeconds: 120 + ((i + v) * 37) % 400,
+					durationSeconds: 120 + (((i + v) * 37) % 400),
 					createdAt: new Date(Date.now() - (i * 120 + v * 45) * 60_000),
 				},
 			});
