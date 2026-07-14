@@ -1,3 +1,6 @@
+import { CloudflareImagesService } from '@/common/libs/cloudflare/cloudflare-images.service';
+import { CloudflareStreamService } from '@/common/libs/cloudflare/cloudflare-stream.service';
+import { extractCloudflareStreamUidFromVideoUrl } from '@/common/libs/cloudflare/stream-video.utils';
 import { CloudinaryService } from '@/common/libs/cloudinary/cloudinary.service';
 import { PrismaService } from '@/common/prisma/prisma.service';
 import {
@@ -11,18 +14,14 @@ import {
 	NotFoundException,
 } from '@nestjs/common';
 import { NotificationType, Prisma } from '@prisma/client';
-import { UploadApiResponse } from 'cloudinary';
 import axios from 'axios';
+import { UploadApiResponse } from 'cloudinary';
 import type { Readable } from 'stream';
 import { NotificationsGateway } from '../notification/notification.gateway';
 import { NotificationService } from '../notification/notification.service';
 import { CreateVideoDto } from './dto/create-video.dto';
 import { PublicVideosQueryDto } from './dto/public-videos-query.dto';
 import { UpdateVideoDto } from './dto/update-video.dto';
-import { CloudflareStreamService } from '@/common/libs/cloudflare/cloudflare-stream.service';
-import { extractCloudflareStreamUidFromVideoUrl } from '@/common/libs/cloudflare/stream-video.utils';
-import { CloudflareImagesService } from '@/common/libs/cloudflare/cloudflare-images.service';
-import { parseChaptersJson } from './utils/chapter-timecode.util';
 import {
 	HOME_FEED_MAX_CANDIDATES,
 	HOME_TASTE_LOOKBACK_MS,
@@ -34,18 +33,18 @@ import {
 	parseVideoTagTokens,
 	rankHomeFeedVideos,
 } from './home-feed-rank.util';
+import { parseChaptersJson } from './utils/chapter-timecode.util';
 
-/** Watch sidebar: newest from this channel (capped), then newest tag matches from other channels. */
 const RECOMMENDED_SIDEBAR_TOTAL = 10;
 const RECOMMENDED_SIDEBAR_SAME_CHANNEL_MAX = 3;
 
-/**
- * Extra public videos from taste-matched channels merged into the home pool so favorites
- * are not dropped when they are older than the newest HOME_FEED_MAX_CANDIDATES.
- */
 const HOME_FEED_TASTE_CHANNEL_EXTRA = 200;
 
-function attachmentBasename(title: string | null | undefined, videoId: string, ext: '.mp4' | '.webm') {
+function attachmentBasename(
+	title: string | null | undefined,
+	videoId: string,
+	ext: '.mp4' | '.webm',
+) {
 	const trimmed = String(title ?? '')
 		.replace(/[<>"/\\|?*\u0000-\u001F]+/g, '')
 		.trim()
@@ -74,7 +73,6 @@ export class VideosService {
 		return extractCloudflareStreamUidFromVideoUrl(v.videoFile);
 	}
 
-	/** Fetch duration from Stream, persist when found (encoding may finish after first publish). */
 	private async syncDurationFromStreamIfMissing(
 		videoId: string,
 		videoPublicId: string | null,
@@ -161,9 +159,7 @@ export class VideosService {
 					channelId,
 					durationSeconds,
 					chapters:
-						chaptersNormalized != null
-							? (chaptersNormalized as Prisma.InputJsonValue)
-							: undefined,
+						chaptersNormalized != null ? (chaptersNormalized as Prisma.InputJsonValue) : undefined,
 				},
 			});
 
@@ -199,7 +195,7 @@ export class VideosService {
 				);
 			}
 
-			return { message: '✅ Video created', data: newVideo };
+			return { message: 'Video created', data: newVideo };
 		} catch (err: unknown) {
 			const errorMessage = err instanceof Error ? err.message : String(err);
 			throw new InternalServerErrorException(`Failed to create video: ${errorMessage}`);
@@ -248,10 +244,7 @@ export class VideosService {
 			.slice(0, HOME_TASTE_TOP_CHANNELS);
 		const sumTopChannelViews = topChannelEntries.reduce((s, [, c]) => s + c, 0);
 		const channelWatchShare = new Map(
-			topChannelEntries.map(([id, c]) => [
-				id,
-				sumTopChannelViews > 0 ? c / sumTopChannelViews : 0,
-			]),
+			topChannelEntries.map(([id, c]) => [id, sumTopChannelViews > 0 ? c / sumTopChannelViews : 0]),
 		);
 		const topTags = [...tagCounts.entries()]
 			.sort((a, b) => b[1] - a[1])
@@ -526,9 +519,14 @@ export class VideosService {
 			let detail = `Upstream fetch failed for ${videoId}`;
 			if (axios.isAxiosError(e)) {
 				const hs = e.response?.status ?? 'n/a';
-				const hdr = typeof e.response?.headers?.['content-type'] === 'string' ? e.response.headers['content-type'] : '';
+				const hdr =
+					typeof e.response?.headers?.['content-type'] === 'string'
+						? e.response.headers['content-type']
+						: '';
 				detail += ` — HTTP ${hs} ${e.code ?? ''}${hdr ? ` ct=${hdr}` : ''}`;
-				const shortUrl = upstreamUrl.startsWith('http') ? upstreamUrl.split('?')[0].slice(0, 88) + '…' : upstreamUrl;
+				const shortUrl = upstreamUrl.startsWith('http')
+					? upstreamUrl.split('?')[0].slice(0, 88) + '…'
+					: upstreamUrl;
 				this.logger.warn(`pipePremiumDownload stream GET ${detail} url=${shortUrl}`);
 				if (e.response?.status === 403) {
 					throw new BadGatewayException(
@@ -541,13 +539,14 @@ export class VideosService {
 					);
 				}
 			}
-			this.logger.warn(`pipePremiumDownload stream GET unexpected: ${e instanceof Error ? e.message : String(e)}`);
+			this.logger.warn(
+				`pipePremiumDownload stream GET unexpected: ${e instanceof Error ? e.message : String(e)}`,
+			);
 			throw new BadGatewayException(`${detail}: ${e instanceof Error ? e.message : String(e)}`);
 		}
 
 		const basename = attachmentBasename(video.title, videoId, ext);
-		const contentDisposition =
-			`attachment; filename="video${ext}"; filename*=UTF-8''${encodeURIComponent(basename)}`;
+		const contentDisposition = `attachment; filename="video${ext}"; filename*=UTF-8''${encodeURIComponent(basename)}`;
 
 		return {
 			stream,
@@ -667,10 +666,10 @@ export class VideosService {
 				data,
 			});
 
-			return { message: '✅ Video successfully updated', data: updatedVideo };
+			return { message: 'Video successfully updated', data: updatedVideo };
 		} catch (err: unknown) {
 			const errorMessage = err instanceof Error ? err.message : String(err);
-			console.error('❌ Video update error:', errorMessage);
+			console.error('Video update error:', errorMessage);
 			throw new InternalServerErrorException(`Failed to update video: ${errorMessage}`);
 		}
 	}
@@ -812,12 +811,9 @@ export class VideosService {
 			}
 		}
 
-		// Empty tags or no cross-channel tag hits: still show other channels (popularity + recency).
 		if (merged.length < RECOMMENDED_SIDEBAR_TOTAL) {
 			const idExclude =
-				picked.size > 0
-					? { not: current.id, notIn: [...picked] as string[] }
-					: { not: current.id };
+				picked.size > 0 ? { not: current.id, notIn: [...picked] as string[] } : { not: current.id };
 			const filler = await this.prisma.video.findMany({
 				where: {
 					publishType: 'now',

@@ -146,28 +146,49 @@ export class CommentService {
 		const safePage = Math.max(1, page);
 		const safeTake = Math.min(Math.max(1, take), 50);
 
-		const [roots, totalRoots] = await Promise.all([
+		const [roots, replies, totalRoots] = await Promise.all([
 			this.prisma.videoComment.findMany({
 				where: { videoId, parentId: null },
 				orderBy: { createdAt: 'desc' },
 				skip: (safePage - 1) * safeTake,
 				take: safeTake,
-				select: {
-					...this.select(),
-					replies: {
-						orderBy: { createdAt: 'asc' },
-						select: this.select(),
-					},
-				},
+				select: this.select(),
+			}),
+			this.prisma.videoComment.findMany({
+				where: { videoId, parentId: { not: null } },
+				orderBy: { createdAt: 'asc' },
+				select: this.select(),
 			}),
 			this.prisma.videoComment.count({ where: { videoId, parentId: null } }),
 		]);
 
-		const data = roots.map(({ replies, ...root }) => {
+		const repliesByParentId = new Map<string, typeof replies>();
+
+		for (const reply of replies) {
+			if (!reply.parentId) continue;
+
+			const parentReplies = repliesByParentId.get(reply.parentId) ?? [];
+			parentReplies.push(reply);
+			repliesByParentId.set(reply.parentId, parentReplies);
+		}
+
+		const collectReplies = (parentId: string): typeof replies => {
+			const directReplies = repliesByParentId.get(parentId) ?? [];
+
+			return directReplies.flatMap((reply) => [reply, ...collectReplies(reply.id)]);
+		};
+
+		const data = roots.map((root) => {
+			const rootReplies = collectReplies(root.id);
 			const formattedRoot = this.formatOne(root, userId);
+
 			return {
 				...formattedRoot,
-				replies: replies.map((reply) => this.formatOne(reply, userId)),
+				replies: rootReplies.map((reply) => this.formatOne(reply, userId)),
+				_count: {
+					...formattedRoot._count,
+					replies: rootReplies.length,
+				},
 			};
 		});
 
@@ -355,7 +376,8 @@ export class CommentService {
 	private formatOne(comment: any, currentUserId?: string) {
 		const { reactions, likesCount, dislikesCount, replies: _replies, ...rest } = comment;
 		void _replies;
-		const userReaction = reactions.find((r: { userId: string }) => r.userId === currentUserId)?.type ?? null;
+		const userReaction =
+			reactions.find((r: { userId: string }) => r.userId === currentUserId)?.type ?? null;
 
 		return {
 			...rest,
